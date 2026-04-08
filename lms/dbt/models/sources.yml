@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: poc_raw
+    tables:
+      - name: users
+      - name: courses
+      - name: enrollments
+      - name: events

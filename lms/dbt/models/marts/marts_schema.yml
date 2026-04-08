@@ -1,0 +1,109 @@
+version: 2
+
+models:
+
+  # ============================================================
+  # DIMENSIONS
+  # ============================================================
+
+  - name: dim_users
+    description: "Dimension table for users with conformed user attributes."
+    columns:
+      - name: user_sk
+        tests:
+          - not_null
+          - unique
+
+      - name: user_id
+        tests:
+          - not_null
+          - unique
+
+      - name: country_code
+        tests:
+          - not_null
+
+  - name: dim_courses
+    description: "Dimension table for courses with course metadata."
+    columns:
+      - name: course_sk
+        tests:
+          - not_null
+          - unique
+
+      - name: course_id
+        tests:
+          - not_null
+          - unique
+
+      - name: category
+        tests:
+          - not_null
+
+
+  # ============================================================
+  # FACT TABLES
+  # ============================================================
+
+  - name: fact_events
+    description: "Atomic event-level fact table with engagement flags and metrics."
+    columns:
+      - name: event_id
+        tests:
+          - not_null
+          - unique
+
+      - name: user_id
+        tests:
+          - relationships:
+              name: fk_fact_events_user
+              arguments:
+                to: ref('dim_users')
+                field: user_id
+
+      - name: course_id
+        tests:
+          - relationships:
+              name: fk_fact_events_course
+              arguments:
+                to: ref('dim_courses')
+                field: course_id
+
+      - name: is_completed
+        description: "Flag = 1 when event_type = 'complete'."
+        tests:
+          - not_null
+
+      - name: safe_time_spent_sec
+        description: "Non-negative derived time_spent field."
+        tests:
+          - not_null
+
+
+  - name: fact_enrollments
+    description: "Atomic fact table containing user enrollments."
+    columns:
+      - name: enrollment_id
+        tests:
+          - not_null
+          - unique
+
+      - name: user_id
+        tests:
+          - relationships:
+              name: fk_fact_enrollments_user
+              arguments:
+                to: ref('dim_users')
+                field: user_id
+
+      - name: course_id
+        tests:
+          - relationships:
+              name: fk_fact_enrollments_course
+              arguments:
+                to: ref('dim_courses')
+                field: course_id
+
+      - name: enrollment_channel
+        tests:
+          - not_null

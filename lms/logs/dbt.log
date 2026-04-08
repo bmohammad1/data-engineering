@@ -1,0 +1,89 @@
+[0m19:41:06.313101 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c297700>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d3113d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d311700>]}
+
+
+============================== 19:41:06.316384 | 7ed2a019-1b69-41ca-816f-64c535699466 ==============================
+[0m19:41:06.316384 [info ] [MainThread]: Running with dbt=1.11.0-b3
+[0m19:41:06.316679 [debug] [MainThread]: running dbt with arguments {'use_colors': 'True', 'no_print': 'None', 'fail_fast': 'False', 'log_cache_events': 'False', 'use_experimental_parser': 'False', 'version_check': 'True', 'invocation_command': 'dbt debug', 'target_path': 'None', 'static_parser': 'True', 'empty': 'None', 'cache_selected_only': 'False', 'write_json': 'True', 'log_path': 'logs', 'warn_error': 'None', 'profiles_dir': '/Users/slenka1/.dbt', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'introspect': 'True', 'send_anonymous_usage_stats': 'True', 'partial_parse': 'True', 'quiet': 'False', 'debug': 'False', 'indirect_selection': 'eager', 'printer_width': '80', 'log_format': 'default'}
+[0m19:41:06.326928 [info ] [MainThread]: dbt version: 1.11.0-b3
+[0m19:41:06.327118 [info ] [MainThread]: python version: 3.9.6
+[0m19:41:06.327237 [info ] [MainThread]: python path: /Users/slenka1/.venv/bin/python3
+[0m19:41:06.327345 [info ] [MainThread]: os info: macOS-26.3.1-arm64-arm-64bit
+[0m19:41:06.415919 [debug] [MainThread]: Redshift adapter: Setting redshift_connector to ERROR
+[0m19:41:06.416152 [debug] [MainThread]: Redshift adapter: Setting redshift_connector.core to ERROR
+[0m19:41:06.482388 [info ] [MainThread]: Using profiles dir at /Users/slenka1/.dbt
+[0m19:41:06.482609 [info ] [MainThread]: Using profiles.yml file at /Users/slenka1/.dbt/profiles.yml
+[0m19:41:06.482738 [info ] [MainThread]: Using dbt_project.yml file at /Users/slenka1/Projects-POC/data-platform/dbt_project.yml
+[0m19:41:06.483302 [info ] [MainThread]: adapter type: redshift
+[0m19:41:06.483448 [info ] [MainThread]: adapter version: 1.9.5
+[0m19:41:06.483566 [info ] [MainThread]: Configuration:
+[0m19:41:06.483676 [info ] [MainThread]:   profiles.yml file [[32mOK found and valid[0m]
+[0m19:41:06.483781 [info ] [MainThread]:   dbt_project.yml file [[31mERROR not found[0m]
+[0m19:41:06.483893 [info ] [MainThread]: Required dependencies:
+[0m19:41:06.484216 [debug] [MainThread]: Executing "git --help"
+[0m19:41:06.509220 [debug] [MainThread]: STDOUT: "b"usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]\n           [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]\n           [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--no-lazy-fetch]\n           [--no-optional-locks] [--no-advice] [--bare] [--git-dir=<path>]\n           [--work-tree=<path>] [--namespace=<name>] [--config-env=<name>=<envvar>]\n           <command> [<args>]\n\nThese are common Git commands used in various situations:\n\nstart a working area (see also: git help tutorial)\n   clone      Clone a repository into a new directory\n   init       Create an empty Git repository or reinitialize an existing one\n\nwork on the current change (see also: git help everyday)\n   add        Add file contents to the index\n   mv         Move or rename a file, a directory, or a symlink\n   restore    Restore working tree files\n   rm         Remove files from the working tree and from the index\n\nexamine the history and state (see also: git help revisions)\n   bisect     Use binary search to find the commit that introduced a bug\n   diff       Show changes between commits, commit and working tree, etc\n   grep       Print lines matching a pattern\n   log        Show commit logs\n   show       Show various types of objects\n   status     Show the working tree status\n\ngrow, mark and tweak your common history\n   backfill   Download missing objects in a partial clone\n   branch     List, create, or delete branches\n   commit     Record changes to the repository\n   merge      Join two or more development histories together\n   rebase     Reapply commits on top of another base tip\n   reset      Reset current HEAD to the specified state\n   switch     Switch branches\n   tag        Create, list, delete or verify a tag object signed with GPG\n\ncollaborate (see also: git help workflows)\n   fetch      Download objects and refs from another repository\n   pull       Fetch from and integrate with another repository or a local branch\n   push       Update remote refs along with associated objects\n\n'git help -a' and 'git help -g' list available subcommands and some\nconcept guides. See 'git help <command>' or 'git help <concept>'\nto read about a specific subcommand or concept.\nSee 'git help git' for an overview of the system.\n""
+[0m19:41:06.509579 [debug] [MainThread]: STDERR: "b''"
+[0m19:41:06.509713 [info ] [MainThread]:  - git [[32mOK found[0m]
+
+[0m19:41:06.509858 [info ] [MainThread]: Connection:
+[0m19:41:06.510019 [info ] [MainThread]:   host: redshift-cluster-1.cswww5mgmkyv.us-east-1.redshift.amazonaws.com:5439/dev
+[0m19:41:06.510140 [info ] [MainThread]:   user: awsuser
+[0m19:41:06.510242 [info ] [MainThread]:   port: 5439
+[0m19:41:06.510339 [info ] [MainThread]:   database: dev
+[0m19:41:06.510446 [info ] [MainThread]:   method: database
+[0m19:41:06.510545 [info ] [MainThread]:   cluster_id: None
+[0m19:41:06.510644 [info ] [MainThread]:   iam_profile: None
+[0m19:41:06.510741 [info ] [MainThread]:   schema: POC_RAW
+[0m19:41:06.510845 [info ] [MainThread]:   sslmode: prefer
+[0m19:41:06.510944 [info ] [MainThread]:   region: None
+[0m19:41:06.511041 [info ] [MainThread]:   sslmode: prefer
+[0m19:41:06.511138 [info ] [MainThread]:   region: None
+[0m19:41:06.511234 [info ] [MainThread]:   autocreate: False
+[0m19:41:06.511333 [info ] [MainThread]:   db_groups: []
+[0m19:41:06.511429 [info ] [MainThread]:   ra3_node: False
+[0m19:41:06.511526 [info ] [MainThread]:   connect_timeout: None
+[0m19:41:06.511626 [info ] [MainThread]:   role: None
+[0m19:41:06.511724 [info ] [MainThread]:   retries: 1
+[0m19:41:06.511822 [info ] [MainThread]:   retry_all: False
+[0m19:41:06.511920 [info ] [MainThread]:   autocommit: True
+[0m19:41:06.512019 [info ] [MainThread]:   access_key_id: None
+[0m19:41:06.512114 [info ] [MainThread]:   is_serverless: None
+[0m19:41:06.512217 [info ] [MainThread]:   serverless_work_group: None
+[0m19:41:06.512327 [info ] [MainThread]:   serverless_acct_id: None
+[0m19:41:06.512583 [info ] [MainThread]: Registered adapter: redshift=1.9.5
+[0m19:41:06.559795 [debug] [MainThread]: Acquiring new redshift connection 'debug'
+[0m19:41:06.562222 [debug] [MainThread]: Using redshift connection "debug"
+[0m19:41:06.562350 [debug] [MainThread]: On debug: select 1 as id
+[0m19:41:06.562451 [debug] [MainThread]: Opening a new connection, currently in state init
+[0m19:41:06.562568 [debug] [MainThread]: Redshift adapter: Connecting to Redshift with 'database' credentials method
+[0m19:41:06.564147 [debug] [MainThread]: Redshift adapter: Establishing connection using ssl with `sslmode` set to 'prefer'.To connect without ssl, set `sslmode` to 'disable'.
+[0m19:41:06.627796 [debug] [MainThread]: Redshift adapter: Got a retryable error when attempting to open a redshift connection.
+1 attempts remaining. Retrying in 1 seconds.
+Error:
+('communication error', gaierror(8, 'nodename nor servname provided, or not known'))
+[0m19:41:07.636349 [debug] [MainThread]: Redshift adapter: Error running SQL: select 1 as id
+[0m19:41:07.636707 [debug] [MainThread]: Redshift adapter: Rolling back transaction.
+[0m19:41:07.636968 [debug] [MainThread]: Redshift adapter: Not retrying error: Database Error
+  ('communication error', gaierror(8, 'nodename nor servname provided, or not known'))
+[0m19:41:07.637189 [debug] [MainThread]: On debug: No close available on handle
+[0m19:41:07.637417 [info ] [MainThread]:   Connection test: [[31mERROR[0m]
+
+[0m19:41:07.637707 [info ] [MainThread]: [31m2 checks failed:[0m
+[0m19:41:07.637935 [info ] [MainThread]: Project loading failed for the following reason:
+ project path </Users/slenka1/Projects-POC/data-platform/dbt_project.yml> not found
+
+[0m19:41:07.638146 [info ] [MainThread]: dbt was unable to connect to the specified database.
+The database returned the following error:
+
+  >Database Error
+  ('communication error', gaierror(8, 'nodename nor servname provided, or not known'))
+
+Check your database credentials and try again. For more information, visit:
+https://docs.getdbt.com/docs/configure-your-profile
+
+
+[0m19:41:07.642342 [debug] [MainThread]: Resource report: {"command_name": "debug", "command_success": false, "command_wall_clock_time": 1.3963572, "process_in_blocks": "0", "process_kernel_time": 0.190186, "process_mem_max_rss": "116621312", "process_out_blocks": "0", "process_user_time": 0.599222}
+[0m19:41:07.642733 [debug] [MainThread]: Command `dbt debug` failed at 19:41:07.642650 after 1.40 seconds
+[0m19:41:07.643012 [debug] [MainThread]: Connection 'debug' was properly closed.
+[0m19:41:07.643261 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c297700>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d3b4700>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e27bd00>]}
+[0m19:41:07.643586 [debug] [MainThread]: Flushing usage events
+[0m19:41:08.686246 [debug] [MainThread]: An error was encountered while trying to flush usage events

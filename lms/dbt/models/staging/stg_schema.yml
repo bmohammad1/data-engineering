@@ -1,0 +1,51 @@
+version: 2
+
+models:
+
+  - name: stg_users
+    columns:
+      - name: user_id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_courses
+    columns:
+      - name: course_id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_enrollments
+    columns:
+      - name: enrollment_id
+        tests:
+          - not_null
+          - unique
+      - name: user_id
+        tests:
+          - relationships:
+              to: ref('stg_users')
+              field: user_id
+      - name: course_id
+        tests:
+          - relationships:
+              to: ref('stg_courses')
+              field: course_id
+
+  - name: stg_events
+    columns:
+      - name: event_id
+        tests:
+          - not_null
+          - unique
+      - name: user_id
+        tests:
+          - relationships:
+              to: ref('stg_users')
+              field: user_id
+      - name: course_id
+        tests:
+          - relationships:
+              to: ref('stg_courses')
+              field: course_id
