@@ -105,6 +105,26 @@ terraform plan
 terraform apply
 ```
 
+### Terraform Outputs
+
+After `terraform apply`, the following outputs are available:
+
+| Output                  | Description                                      |
+|-------------------------|--------------------------------------------------|
+| `api_url`               | API Gateway base URL                             |
+| `lambda_function_name`  | Lambda function name                             |
+| `cognito_user_pool_id`  | Cognito User Pool ID                             |
+| `cognito_token_url`     | Cognito token endpoint for `client_credentials`  |
+| `cognito_custom_scope`  | Custom scope to assign to your app client        |
+| `cognito_client_id`     | Cognito app client ID for M2M authentication     |
+| `cognito_client_secret` | Cognito app client secret (marked sensitive)     |
+
+The `cognito_client_secret` is marked as `sensitive` in Terraform, so it displays as `<sensitive>` in the CLI to prevent accidental exposure in terminal logs or CI output. To retrieve the actual value:
+
+```bash
+terraform output -raw cognito_client_secret
+```
+
 ### 4. Create Cognito App Client (Manual)
 
 1. Get the User Pool ID and custom scope from Terraform:
