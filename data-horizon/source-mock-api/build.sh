@@ -31,7 +31,7 @@ find "$BUILD_DIR" -type d -name '*.dist-info' -exec rm -rf {} + 2>/dev/null || t
 find "$BUILD_DIR" -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
 find "$BUILD_DIR" -name '*.pyc' -delete 2>/dev/null || true
 
-# Create zip — use Python's zipfile since zip may not be available on Windows
+# Create zip — use Python's zipfile since zip was not available on Windows
 python -c "
 import zipfile, pathlib, sys
 src = pathlib.Path('$BUILD_DIR')

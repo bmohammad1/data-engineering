@@ -3,7 +3,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, Query, status
+from fastapi.responses import JSONResponse
 
 from app.data_generator import (
     generate_alarms,
@@ -16,6 +17,7 @@ from app.data_generator import (
     generate_maintenance,
     generate_measurements,
 )
+from app.dirty_data import apply_dirty_data
 from app.exceptions import TagNotFoundException
 from app.logging_config import configure_logging, request_log_ctx
 from app.middleware import RequestLoggingMiddleware
@@ -71,7 +73,7 @@ async def lifespan(_application: FastAPI):
 
 
 app = FastAPI(
-    title="Mock Source API",
+    title="Source MOCK API",
     description="Returns randomly generated, FK-consistent data for a given TagID.",
     version=APP_VERSION,
     lifespan=lifespan,
@@ -81,13 +83,19 @@ app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/tags", response_model=TagListResponse, status_code=status.HTTP_200_OK)
-async def list_tags() -> TagListResponse:
+def list_tags() -> TagListResponse:
     """Return all available tag IDs."""
     return TagListResponse(tags=list(TAGS.keys()))
 
 
 @app.get("/tag/{tag_id}", response_model=TagResponse, status_code=status.HTTP_200_OK)
-async def get_tag(tag_id: str) -> TagResponse:
+def get_tag(
+    tag_id: str,
+    dirty: bool = Query(
+        default=False,
+        description="When true, inject realistic data quality issues (duplicates, extra columns, type corruption).",
+    ),
+) -> TagResponse:
     """Return tag metadata plus randomly generated data from every related table.
 
     FK constraints are enforced: equipment, location, and customer references
@@ -131,7 +139,26 @@ async def get_tag(tag_id: str) -> TagResponse:
         + len(compliance)
         + len(forecasts)
     )
-    request_log_ctx.get({}).update(tag_id=tag_id, record_count=record_count)
+    request_log_ctx.get({}).update(
+        tag_id=tag_id, record_count=record_count, dirty=dirty,
+    )
+
+    if dirty:
+        return JSONResponse(content={
+            "tag": tag.model_dump(mode="json"),
+            "equipment": Equipment(**EQUIPMENT[equipment_id]).model_dump(mode="json"),
+            "location": Location(**LOCATIONS[location_id]).model_dump(mode="json"),
+            "customer": Customer(**CUSTOMERS[customer_id]).model_dump(mode="json"),
+            "measurements": apply_dirty_data(measurements, "measurements"),
+            "alarms": apply_dirty_data(alarms, "alarms"),
+            "maintenance": apply_dirty_data(maintenance, "maintenance"),
+            "events": apply_dirty_data(events, "events"),
+            "contracts": apply_dirty_data(contracts, "contracts"),
+            "billing": apply_dirty_data(billing, "billing"),
+            "inventory": apply_dirty_data(inventory, "inventory"),
+            "regulatory_compliance": apply_dirty_data(compliance, "compliance"),
+            "financial_forecasts": apply_dirty_data(forecasts, "forecasts"),
+        })
 
     return TagResponse(
         tag=tag,

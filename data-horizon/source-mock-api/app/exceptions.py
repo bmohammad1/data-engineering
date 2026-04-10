@@ -1,4 +1,4 @@
-"""Custom exception classes for the Mock Source API."""
+"""Custom exception classes for the  Source Mock API."""
 
 from fastapi import HTTPException, status
 

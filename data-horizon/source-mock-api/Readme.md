@@ -1,10 +1,10 @@
-# Mock Source API
+# Source MOCK API
 
 Stateless FastAPI application deployed on AWS Lambda that returns randomly generated, FK-consistent industrial data for a given tag ID. Static reference data (tags, equipment, locations, customers) is built deterministically at startup, and per-request data (measurements, alarms, maintenance, etc.) is generated randomly on each call.
 
 ## Tech Stack
 
-- **Language:** Python 3.14
+- **Language:** Python 3.12
 - **Framework:** FastAPI + Pydantic v2
 - **Deployment:** AWS Lambda via Mangum
 - **Infrastructure:** Terraform (API Gateway HTTP API, Lambda, Cognito)
@@ -13,7 +13,7 @@ Stateless FastAPI application deployed on AWS Lambda that returns randomly gener
 ## Project Structure
 
 ```
-mock-source-api/
+source-mock-api/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py              # FastAPI routes
@@ -78,8 +78,7 @@ Test: `GET http://localhost:8000/tag/TAG-00001`
 
 - AWS CLI configured
 - Terraform >= 1.5
-- Python 3.14
-- Cognito User Pool is created automatically by Terraform
+- Python 3.12
 
 ### 1. Build Lambda Zip
 
@@ -174,4 +173,4 @@ terraform destroy
 ## Performance
 - Memory: 256 MB
 - Timeout: 30 s
-- No database — all data is generated in-memory
+- Data is generated in-memory
