@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Claude
+.claude/
+CLAUDE.md
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/.terraform.lock.hcl
+*.tfvars
+!terraform/environments/*/terraform.tfvars
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lambda packaging
+lambdas/orchestrator/package/
+lambdas/map_state_processor/package/
+*.zip
+
+# Secrets
+.env
+*.pem
+credentials.json
