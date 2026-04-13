@@ -18,7 +18,7 @@ resource "aws_cloudwatch_event_target" "parent_state_machine" {
   }
 
   retry_policy {
-    maximum_event_age_in_seconds = 3600
+    maximum_event_age_in_seconds = 600
     maximum_retry_attempts       = 3
   }
 }
