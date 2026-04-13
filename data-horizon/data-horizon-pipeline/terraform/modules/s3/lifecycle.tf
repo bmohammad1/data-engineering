@@ -11,6 +11,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw" {
       days          = 30
       storage_class = "DEEP_ARCHIVE"
     }
+    filter {} 
   }
 }
 
@@ -20,7 +21,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "cleaned" {
   rule {
     id     = "archive-cleaned-to-glacier"
     status = "Enabled"
-
+    filter {} 
     transition {
       days          = 30
       storage_class = "DEEP_ARCHIVE"

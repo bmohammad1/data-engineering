@@ -14,7 +14,7 @@ resource "aws_secretsmanager_secret_version" "pipeline_config" {
     # S3 bucket names
     raw_bucket_name           = var.raw_bucket_name
     cleaned_bucket_name       = var.cleaned_bucket_name
-    validated_bucket_name       = var.validated_bucket_name
+    validated_bucket_name     = var.validated_bucket_name
     bad_bucket_name           = var.bad_bucket_name
     scripts_bucket_name       = var.scripts_bucket_name
     orchestration_bucket_name = var.orchestration_bucket_name
@@ -24,9 +24,8 @@ resource "aws_secretsmanager_secret_version" "pipeline_config" {
     pipeline_state_table = var.dynamodb_table_name
 
     # Source API
-    source_api_base_url  = var.source_api_base_url
-    source_api_token     = var.source_api_token
-    source_api_client_id = var.source_api_client_id
+    source_api_base_url = var.source_api_base_url
+    source_api_token    = var.source_api_token
 
     # Redshift
     redshift_host     = var.redshift_host

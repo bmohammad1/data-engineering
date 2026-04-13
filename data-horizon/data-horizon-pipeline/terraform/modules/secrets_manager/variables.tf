@@ -53,10 +53,6 @@ variable "source_api_token" {
   type        = string
 }
 
-variable "source_api_client_id" {
-  description = "Cognito client ID for source API"
-  type        = string
-}
 
 variable "redshift_host" {
   description = "Redshift cluster endpoint hostname"

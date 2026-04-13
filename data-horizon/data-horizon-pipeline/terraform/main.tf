@@ -65,8 +65,7 @@ module "redshift" {
 module "secrets_manager" {
   source = "./modules/secrets_manager"
 
-  name_prefix = local.name_prefix
-
+  name_prefix              = local.name_prefix
   raw_bucket_name           = module.s3.raw_bucket_name
   cleaned_bucket_name       = module.s3.cleaned_bucket_name
   validated_bucket_name     = module.s3.validated_bucket_name
@@ -79,7 +78,6 @@ module "secrets_manager" {
 
   source_api_base_url = var.source_api_base_url
   source_api_token    = var.source_api_token
-  source_api_client_id = var.source_api_client_id
 
   redshift_host     = module.redshift.cluster_host
   redshift_database = module.redshift.database_name

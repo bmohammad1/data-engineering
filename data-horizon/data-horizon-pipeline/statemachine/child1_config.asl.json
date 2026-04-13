@@ -1,0 +1,11 @@
+{
+  "Comment": "A simple hello world state machine",
+  "StartAt": "HelloState",
+  "States": {
+    "HelloState": {
+      "Type": "Pass",
+      "Result": "hello",
+      "End": true
+    }
+  }
+}
