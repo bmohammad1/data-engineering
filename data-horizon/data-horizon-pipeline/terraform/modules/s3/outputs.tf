@@ -18,14 +18,14 @@ output "cleaned_bucket_arn" {
   value       = aws_s3_bucket.cleaned.arn
 }
 
-output "parquet_bucket_name" {
+output "validated_bucket_name" {
   description = "Parquet data bucket name"
-  value       = aws_s3_bucket.parquet.bucket
+  value       = aws_s3_bucket.validated.bucket
 }
 
-output "parquet_bucket_arn" {
+output "validated_bucket_arn" {
   description = "Parquet data bucket ARN"
-  value       = aws_s3_bucket.parquet.arn
+  value       = aws_s3_bucket.validated.arn
 }
 
 output "bad_bucket_name" {

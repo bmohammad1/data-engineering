@@ -43,8 +43,8 @@ variable "redshift_master_username" {
   type        = string
 }
 
-variable "parquet_bucket_name" {
-  description = "S3 parquet bucket name (source for COPY)"
+variable "validated_bucket_name" {
+  description = "S3 validated bucket name (source for COPY)"
   type        = string
 }
 

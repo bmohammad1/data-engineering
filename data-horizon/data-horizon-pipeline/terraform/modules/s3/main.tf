@@ -2,7 +2,7 @@ locals {
   buckets = {
     raw           = "${var.name_prefix}-raw"
     cleaned       = "${var.name_prefix}-cleaned"
-    parquet       = "${var.name_prefix}-parquet"
+    validated       = "${var.name_prefix}-validated"
     bad           = "${var.name_prefix}-bad"
     scripts       = "${var.name_prefix}-scripts"
     orchestration = "${var.name_prefix}-orchestration"
@@ -20,9 +20,9 @@ resource "aws_s3_bucket" "cleaned" {
   tags   = merge(var.tags, { Name = local.buckets.cleaned })
 }
 
-resource "aws_s3_bucket" "parquet" {
-  bucket = local.buckets.parquet
-  tags   = merge(var.tags, { Name = local.buckets.parquet })
+resource "aws_s3_bucket" "validated" {
+  bucket = local.buckets.validated
+  tags   = merge(var.tags, { Name = local.buckets.validated })
 }
 
 resource "aws_s3_bucket" "bad" {
@@ -51,7 +51,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "all" {
   for_each = {
     raw           = aws_s3_bucket.raw.id
     cleaned       = aws_s3_bucket.cleaned.id
-    parquet       = aws_s3_bucket.parquet.id
+    validated       = aws_s3_bucket.validated.id
     bad           = aws_s3_bucket.bad.id
     scripts       = aws_s3_bucket.scripts.id
     orchestration = aws_s3_bucket.orchestration.id
@@ -73,7 +73,7 @@ resource "aws_s3_bucket_public_access_block" "all" {
   for_each = {
     raw           = aws_s3_bucket.raw.id
     cleaned       = aws_s3_bucket.cleaned.id
-    parquet       = aws_s3_bucket.parquet.id
+    validated       = aws_s3_bucket.validated.id
     bad           = aws_s3_bucket.bad.id
     scripts       = aws_s3_bucket.scripts.id
     orchestration = aws_s3_bucket.orchestration.id

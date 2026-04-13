@@ -66,6 +66,86 @@ resource "aws_cloudwatch_metric_alarm" "parent_pipeline_failed" {
   tags = var.tags
 }
 
+resource "aws_cloudwatch_metric_alarm" "child1_config_failed" {
+  alarm_name          = "${var.name_prefix}-child1-config-failed"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ExecutionsFailed"
+  namespace           = "AWS/States"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Child1 (config) Step Function had a failed execution"
+  alarm_actions       = [var.sns_topic_arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    StateMachineArn = var.child1_state_machine_arn
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "child2_extraction_failed" {
+  alarm_name          = "${var.name_prefix}-child2-extraction-failed"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ExecutionsFailed"
+  namespace           = "AWS/States"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Child2 (extraction) Step Function had a failed execution"
+  alarm_actions       = [var.sns_topic_arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    StateMachineArn = var.child2_state_machine_arn
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "child3_transformation_failed" {
+  alarm_name          = "${var.name_prefix}-child3-transformation-failed"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ExecutionsFailed"
+  namespace           = "AWS/States"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Child3 (transformation) Step Function had a failed execution"
+  alarm_actions       = [var.sns_topic_arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    StateMachineArn = var.child3_state_machine_arn
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "child4_redshift_load_failed" {
+  alarm_name          = "${var.name_prefix}-child4-redshift-load-failed"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ExecutionsFailed"
+  namespace           = "AWS/States"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Child4 (Redshift load) Step Function had a failed execution"
+  alarm_actions       = [var.sns_topic_arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    StateMachineArn = var.child4_state_machine_arn
+  }
+
+  tags = var.tags
+}
+
 # =============================================================================
 # Glue job failure alarms
 # =============================================================================

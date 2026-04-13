@@ -13,7 +13,7 @@ output "cleaned_table_name" {
   value       = aws_glue_catalog_table.cleaned_data.name
 }
 
-output "parquet_table_name" {
-  description = "Glue Catalog parquet data table name"
-  value       = aws_glue_catalog_table.parquet_data.name
+output "validated_table_name" {
+  description = "Glue Catalog validated data table name"
+  value       = aws_glue_catalog_table.validated_data.name
 }

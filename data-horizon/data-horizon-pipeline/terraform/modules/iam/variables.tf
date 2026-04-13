@@ -18,7 +18,7 @@ variable "s3_cleaned_bucket_arn" {
   type        = string
 }
 
-variable "s3_parquet_bucket_arn" {
+variable "s3_validated_bucket_arn" {
   description = "Parquet data S3 bucket ARN"
   type        = string
 }

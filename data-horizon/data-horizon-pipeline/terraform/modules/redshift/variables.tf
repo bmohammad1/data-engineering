@@ -39,8 +39,8 @@ variable "security_group_id" {
   type        = string
 }
 
-variable "redshift_role_arn" {
-  description = "IAM role ARN for Redshift (S3 COPY)"
+variable "s3_validated_bucket_arn" {
+  description = "Parquet S3 bucket ARN (for the COPY IAM policy)"
   type        = string
 }
 

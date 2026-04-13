@@ -13,7 +13,7 @@ variable "cleaned_bucket_name" {
   type        = string
 }
 
-variable "parquet_bucket_name" {
+variable "validated_bucket_name" {
   description = "Parquet data S3 bucket name"
   type        = string
 }
@@ -48,20 +48,14 @@ variable "source_api_base_url" {
   type        = string
 }
 
-variable "source_api_token_url" {
-  description = "Cognito token endpoint for source API"
+variable "source_api_token" {
+  description = "Cognito token for source API"
   type        = string
 }
 
 variable "source_api_client_id" {
   description = "Cognito client ID for source API"
   type        = string
-}
-
-variable "source_api_client_secret" {
-  description = "Cognito client secret for source API"
-  type        = string
-  sensitive   = true
 }
 
 variable "redshift_host" {

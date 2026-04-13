@@ -68,8 +68,8 @@ variable "source_api_base_url" {
   type        = string
 }
 
-variable "source_api_token_url" {
-  description = "Cognito token endpoint for source API auth"
+variable "source_api_token" {
+  description = "Cognito token for source API"
   type        = string
 }
 
@@ -78,11 +78,6 @@ variable "source_api_client_id" {
   type        = string
 }
 
-variable "source_api_client_secret" {
-  description = "Cognito client secret for source API"
-  type        = string
-  sensitive   = true
-}
 
 variable "alert_email" {
   description = "Email address for SNS failure alert notifications"

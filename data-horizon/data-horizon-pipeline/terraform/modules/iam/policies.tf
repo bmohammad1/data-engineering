@@ -86,7 +86,7 @@ data "aws_iam_policy_document" "map_processor" {
 # =============================================================================
 
 data "aws_iam_policy_document" "glue" {
-  # S3: read raw, write cleaned/parquet/bad
+  # S3: read raw, write cleaned/validated/bad
   statement {
     effect = "Allow"
     actions = [
@@ -106,7 +106,7 @@ data "aws_iam_policy_document" "glue" {
     actions = ["s3:PutObject"]
     resources = [
       "${var.s3_cleaned_bucket_arn}/*",
-      "${var.s3_parquet_bucket_arn}/*",
+      "${var.s3_validated_bucket_arn}/*",
       "${var.s3_bad_bucket_arn}/*",
     ]
   }
@@ -225,20 +225,3 @@ data "aws_iam_policy_document" "eventbridge" {
   }
 }
 
-# =============================================================================
-# Redshift Policy (S3 COPY access)
-# =============================================================================
-
-data "aws_iam_policy_document" "redshift" {
-  statement {
-    effect = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:ListBucket",
-    ]
-    resources = [
-      var.s3_parquet_bucket_arn,
-      "${var.s3_parquet_bucket_arn}/*",
-    ]
-  }
-}

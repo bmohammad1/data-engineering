@@ -88,24 +88,24 @@ resource "aws_glue_catalog_table" "cleaned_data" {
   }
 }
 
-resource "aws_glue_catalog_table" "parquet_data" {
+resource "aws_glue_catalog_table" "validated_data" {
   database_name = aws_glue_catalog_database.data_horizon.name
-  name          = "parquet_data"
+  name          = "validated_data"
   description   = "Validated data in Parquet format"
 
   table_type = "EXTERNAL_TABLE"
 
   parameters = {
-    classification = "parquet"
+    classification = "validated"
   }
 
   storage_descriptor {
-    location      = "s3://${var.parquet_bucket_name}/parquet/"
-    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
-    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+    location      = "s3://${var.validated_bucket_name}/validated/"
+    input_format  = "org.apache.hadoop.hive.ql.io.validated.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.validated.MapredParquetOutputFormat"
 
     ser_de_info {
-      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+      serialization_library = "org.apache.hadoop.hive.ql.io.validated.serde.ParquetHiveSerDe"
     }
 
     columns {

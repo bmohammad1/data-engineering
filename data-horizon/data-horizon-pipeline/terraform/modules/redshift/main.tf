@@ -1,3 +1,42 @@
+resource "aws_iam_role" "redshift" {
+  name = "${var.name_prefix}-redshift-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "redshift.amazonaws.com" }
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "redshift_s3_copy" {
+  name = "${var.name_prefix}-redshift-s3-copy"
+  role = aws_iam_role.redshift.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:ListBucket",
+      ]
+      Resource = [
+        var.s3_validated_bucket_arn,
+        "${var.s3_validated_bucket_arn}/*",
+      ]
+    }]
+  })
+}
+
+# =============================================================================
+# Redshift Cluster
+# =============================================================================
+
 resource "aws_redshift_subnet_group" "this" {
   name       = "${var.name_prefix}-subnet-group"
   subnet_ids = [var.subnet_id]
@@ -24,10 +63,10 @@ resource "aws_redshift_cluster" "this" {
   enhanced_vpc_routing = true
 
   # IAM role for S3 COPY access.
-  iam_roles = [var.redshift_role_arn]
+  iam_roles = [aws_iam_role.redshift.arn]
 
   # Skip final snapshot in dev/staging to ease destroy; override in prod if needed.
-  skip_final_snapshot = true
+  skip_final_snapshot = true # true for dev/stg only
   publicly_accessible = false
   encrypted           = true
 

@@ -23,7 +23,3 @@ output "eventbridge_role_arn" {
   value       = aws_iam_role.eventbridge.arn
 }
 
-output "redshift_role_arn" {
-  description = "IAM role ARN for Redshift S3 COPY"
-  value       = aws_iam_role.redshift.arn
-}

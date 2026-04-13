@@ -66,7 +66,7 @@ resource "aws_sfn_state_machine" "child4_redshift_load" {
     redshift_cluster_id      = var.redshift_cluster_id
     redshift_database        = var.redshift_database
     redshift_master_username = var.redshift_master_username
-    parquet_bucket_name      = var.parquet_bucket_name
+    validated_bucket_name      = var.validated_bucket_name
     redshift_iam_role_arn    = var.redshift_iam_role_arn
     sns_topic_arn            = var.sns_topic_arn
   })

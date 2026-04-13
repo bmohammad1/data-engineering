@@ -138,27 +138,3 @@ resource "aws_iam_role_policy" "eventbridge_custom" {
   policy = data.aws_iam_policy_document.eventbridge.json
 }
 
-# =============================================================================
-# Redshift Role (for S3 COPY)
-# =============================================================================
-
-resource "aws_iam_role" "redshift" {
-  name = "${var.name_prefix}-redshift-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "redshift.amazonaws.com" }
-    }]
-  })
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy" "redshift_custom" {
-  name   = "${var.name_prefix}-redshift-policy"
-  role   = aws_iam_role.redshift.id
-  policy = data.aws_iam_policy_document.redshift.json
-}

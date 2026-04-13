@@ -13,8 +13,8 @@ variable "cleaned_bucket_name" {
   type        = string
 }
 
-variable "parquet_bucket_name" {
-  description = "S3 bucket name for parquet data"
+variable "validated_bucket_name" {
+  description = "S3 bucket name for validated data"
   type        = string
 }
 

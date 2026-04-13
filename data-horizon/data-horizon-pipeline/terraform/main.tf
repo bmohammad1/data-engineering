@@ -49,16 +49,16 @@ module "sns" {
 module "redshift" {
   source = "./modules/redshift"
 
-  name_prefix       = local.name_prefix
-  node_type         = var.redshift_node_type
-  number_of_nodes   = var.redshift_number_of_nodes
-  database_name     = var.redshift_database_name
-  master_username   = var.redshift_master_username
-  master_password   = var.redshift_master_password
-  subnet_id         = module.vpc.private_subnet_id
-  security_group_id = module.vpc.redshift_security_group_id
-  redshift_role_arn = module.iam.redshift_role_arn
-  tags              = local.common_tags
+  name_prefix           = local.name_prefix
+  node_type             = var.redshift_node_type
+  number_of_nodes       = var.redshift_number_of_nodes
+  database_name         = var.redshift_database_name
+  master_username       = var.redshift_master_username
+  master_password       = var.redshift_master_password
+  subnet_id             = module.vpc.private_subnet_id
+  security_group_id     = module.vpc.redshift_security_group_id
+  s3_validated_bucket_arn = module.s3.validated_bucket_arn
+  tags                  = local.common_tags
 }
 
 # --- Secrets Manager (runtime config) ---
@@ -69,7 +69,7 @@ module "secrets_manager" {
 
   raw_bucket_name           = module.s3.raw_bucket_name
   cleaned_bucket_name       = module.s3.cleaned_bucket_name
-  parquet_bucket_name       = module.s3.parquet_bucket_name
+  validated_bucket_name     = module.s3.validated_bucket_name
   bad_bucket_name           = module.s3.bad_bucket_name
   scripts_bucket_name       = module.s3.scripts_bucket_name
   orchestration_bucket_name = module.s3.orchestration_bucket_name
@@ -77,10 +77,9 @@ module "secrets_manager" {
 
   dynamodb_table_name = module.dynamodb.table_name
 
-  source_api_base_url      = var.source_api_base_url
-  source_api_token_url     = var.source_api_token_url
-  source_api_client_id     = var.source_api_client_id
-  source_api_client_secret = var.source_api_client_secret
+  source_api_base_url = var.source_api_base_url
+  source_api_token    = var.source_api_token
+  source_api_client_id = var.source_api_client_id
 
   redshift_host     = module.redshift.cluster_host
   redshift_database = module.redshift.database_name
@@ -105,7 +104,7 @@ module "iam" {
 
   s3_raw_bucket_arn           = module.s3.raw_bucket_arn
   s3_cleaned_bucket_arn       = module.s3.cleaned_bucket_arn
-  s3_parquet_bucket_arn       = module.s3.parquet_bucket_arn
+  s3_validated_bucket_arn     = module.s3.validated_bucket_arn
   s3_bad_bucket_arn           = module.s3.bad_bucket_arn
   s3_scripts_bucket_arn       = module.s3.scripts_bucket_arn
   s3_orchestration_bucket_arn = module.s3.orchestration_bucket_arn
@@ -153,8 +152,8 @@ module "glue_catalog" {
   name_prefix         = local.name_prefix
   raw_bucket_name     = module.s3.raw_bucket_name
   cleaned_bucket_name = module.s3.cleaned_bucket_name
-  parquet_bucket_name = module.s3.parquet_bucket_name
-  tags                = local.common_tags
+  validated_bucket_name = module.s3.validated_bucket_name
+  tags                  = local.common_tags
 }
 
 # --- Step Functions (parent + 4 children) ---
@@ -170,8 +169,8 @@ module "step_function" {
   redshift_cluster_id            = module.redshift.cluster_identifier
   redshift_database              = module.redshift.database_name
   redshift_master_username       = var.redshift_master_username
-  parquet_bucket_name            = module.s3.parquet_bucket_name
-  redshift_iam_role_arn          = module.iam.redshift_role_arn
+  validated_bucket_name          = module.s3.validated_bucket_name
+  redshift_iam_role_arn          = module.redshift.redshift_role_arn
   sns_topic_arn                  = module.sns.topic_arn
   map_state_concurrency          = var.map_state_concurrency
   statemachine_dir               = "${path.module}/../statemachine"
@@ -200,6 +199,10 @@ module "cloudwatch" {
   transform_glue_job_name           = module.glue.transform_job_name
   validation_glue_job_name          = module.glue.validation_job_name
   parent_state_machine_arn          = module.step_function.parent_state_machine_arn
+  child1_state_machine_arn          = module.step_function.child1_state_machine_arn
+  child2_state_machine_arn          = module.step_function.child2_state_machine_arn
+  child3_state_machine_arn          = module.step_function.child3_state_machine_arn
+  child4_state_machine_arn          = module.step_function.child4_state_machine_arn
   extraction_failures_queue_name    = "${local.name_prefix}-extraction-failures"
   sns_topic_arn                     = module.sns.topic_arn
   tags                              = local.common_tags

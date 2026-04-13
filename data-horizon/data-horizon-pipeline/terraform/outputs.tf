@@ -10,9 +10,9 @@ output "s3_cleaned_bucket_name" {
   value       = module.s3.cleaned_bucket_name
 }
 
-output "s3_parquet_bucket_name" {
-  description = "S3 bucket for parquet output"
-  value       = module.s3.parquet_bucket_name
+output "s3_validated_bucket_name" {
+  description = "S3 bucket for validated output"
+  value       = module.s3.validated_bucket_name
 }
 
 output "s3_orchestration_bucket_name" {

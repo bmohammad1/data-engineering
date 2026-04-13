@@ -34,6 +34,26 @@ variable "parent_state_machine_arn" {
   type        = string
 }
 
+variable "child1_state_machine_arn" {
+  description = "Child1 (config) state machine ARN"
+  type        = string
+}
+
+variable "child2_state_machine_arn" {
+  description = "Child2 (extraction) state machine ARN"
+  type        = string
+}
+
+variable "child3_state_machine_arn" {
+  description = "Child3 (transformation) state machine ARN"
+  type        = string
+}
+
+variable "child4_state_machine_arn" {
+  description = "Child4 (Redshift load) state machine ARN"
+  type        = string
+}
+
 variable "extraction_failures_queue_name" {
   description = "Extraction failures SQS queue name"
   type        = string

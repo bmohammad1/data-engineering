@@ -17,3 +17,8 @@ output "database_name" {
   description = "Redshift database name"
   value       = aws_redshift_cluster.this.database_name
 }
+
+output "redshift_role_arn" {
+  description = "IAM role ARN for Redshift S3 COPY"
+  value       = aws_iam_role.redshift.arn
+}
