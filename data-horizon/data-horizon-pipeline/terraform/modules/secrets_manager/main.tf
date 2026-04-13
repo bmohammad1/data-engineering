@@ -46,7 +46,7 @@ resource "aws_secretsmanager_secret_version" "pipeline_config" {
     map_state_concurrency = var.map_state_concurrency
 
     # Glue job parameters
-    glue_dpu_count  = var.glue_dpu_count
+    glue_dpu_count   = var.glue_dpu_count
     glue_timeout_min = 60
   })
 }

@@ -1,5 +1,5 @@
 locals {
-  orchestrator_zip      = "${path.module}/../../../lambdas/orchestrator/package/lambda.zip"
+  orchestrator_zip        = "${path.module}/../../../lambdas/orchestrator/package/lambda.zip"
   map_state_processor_zip = "${path.module}/../../../lambdas/map_state_processor/package/lambda.zip"
 }
 

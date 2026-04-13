@@ -9,9 +9,9 @@ resource "aws_glue_job" "transform" {
   }
 
   default_arguments = {
-    "--job-language"               = "python"
+    "--job-language"                     = "python"
     "--enable-continuous-cloudwatch-log" = "true"
-    "--SECRET_NAME"                = var.secret_name
+    "--SECRET_NAME"                      = var.secret_name
   }
 
   glue_version      = "4.0"
@@ -35,9 +35,9 @@ resource "aws_glue_job" "validation" {
   }
 
   default_arguments = {
-    "--job-language"               = "python"
+    "--job-language"                     = "python"
     "--enable-continuous-cloudwatch-log" = "true"
-    "--SECRET_NAME"                = var.secret_name
+    "--SECRET_NAME"                      = var.secret_name
   }
 
   glue_version      = "4.0"
