@@ -137,11 +137,32 @@ data "aws_iam_policy_document" "glue" {
 # =============================================================================
 
 data "aws_iam_policy_document" "step_functions" {
-  # Invoke child Step Functions
+  # Invoke and monitor child Step Functions
+  statement {
+    effect = "Allow"
+    actions = [
+      "states:StartExecution",
+      "states:DescribeExecution",
+      "states:StopExecution",
+    ]
+    resources = ["arn:aws:states:*:*:stateMachine:${var.name_prefix}-*"]
+  }
+
   statement {
     effect    = "Allow"
-    actions   = ["states:StartExecution"]
-    resources = ["arn:aws:states:*:*:stateMachine:${var.name_prefix}-*"]
+    actions   = ["states:DescribeExecution", "states:StopExecution"]
+    resources = ["arn:aws:states:*:*:execution:${var.name_prefix}-*:*"]
+  }
+
+  # EventBridge managed rules (required for .sync integrations)
+  statement {
+    effect = "Allow"
+    actions = [
+      "events:PutTargets",
+      "events:PutRule",
+      "events:DescribeRule",
+    ]
+    resources = ["arn:aws:events:*:*:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"]
   }
 
   # Invoke Lambdas
