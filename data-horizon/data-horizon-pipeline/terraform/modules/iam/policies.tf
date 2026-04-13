@@ -26,12 +26,14 @@ data "aws_iam_policy_document" "orchestrator" {
     ]
   }
 
-  # DynamoDB: write run metadata
+  # DynamoDB: read and write run metadata
   statement {
     effect = "Allow"
     actions = [
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:GetItem",
+      "dynamodb:Query",
     ]
     resources = [var.dynamodb_table_arn]
   }
@@ -56,12 +58,14 @@ data "aws_iam_policy_document" "map_processor" {
     resources = ["${var.s3_raw_bucket_arn}/*"]
   }
 
-  # DynamoDB: update item status
+  # DynamoDB: read and write item status
   statement {
     effect = "Allow"
     actions = [
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:GetItem",
+      "dynamodb:Query",
     ]
     resources = [var.dynamodb_table_arn]
   }
