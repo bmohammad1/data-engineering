@@ -1,2 +1,38 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Linting / Testing
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Claude
+.claude/
+CLAUDE.md
+
+# Terraform
+**/.terraform/
+*.tfstate*
+.terraform.lock.hcl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.pem
+credentials.json

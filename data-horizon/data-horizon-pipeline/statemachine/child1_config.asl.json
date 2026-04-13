@@ -1,0 +1,55 @@
+{
+  "Comment": "Child1: Load source config and generate map file",
+  "StartAt": "InvokeOrchestrator",
+  "States": {
+    "InvokeOrchestrator": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${orchestrator_lambda_arn}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.orchestrator_output",
+      "ResultSelector": {
+        "correlation_id.$": "$.Payload.correlation_id",
+        "run_id.$": "$.Payload.run_id",
+        "concurrency.$": "$.Payload.concurrency",
+        "map_items.$": "$.Payload.map_items"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "ConfigSuccess"
+    },
+    "ConfigSuccess": {
+      "Type": "Succeed"
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Child1 Config Failed",
+        "Message.$": "States.Format('Config step failed: {}', $.error.Cause)"
+      },
+      "Next": "ConfigFailed"
+    },
+    "ConfigFailed": {
+      "Type": "Fail",
+      "Error": "ConfigStepFailed",
+      "Cause": "Orchestrator Lambda failed"
+    }
+  }
+}

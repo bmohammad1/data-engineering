@@ -1,0 +1,104 @@
+{
+  "Comment": "Parent pipeline: orchestrates Child1 -> Child2 -> Child3 -> Child4",
+  "StartAt": "Child1Config",
+  "States": {
+    "Child1Config": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${child1_arn}",
+        "Input.$": "$"
+      },
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.child1",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Child2Extraction"
+    },
+    "Child2Extraction": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${child2_arn}",
+        "Input.$": "$.child1.output"
+      },
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.child2",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Child3Transformation"
+    },
+    "Child3Transformation": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${child3_arn}",
+        "Input.$": "$.child2.output"
+      },
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.child3",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Child4RedshiftLoad"
+    },
+    "Child4RedshiftLoad": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${child4_arn}",
+        "Input.$": "$.child3.output"
+      },
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.child4",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "PipelineSuccess"
+    },
+    "PipelineSuccess": {
+      "Type": "Succeed"
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Data Horizon Pipeline Failed",
+        "Message.$": "States.Format('Pipeline failed at step: {}', $.error.Cause)"
+      },
+      "Next": "PipelineFailed"
+    },
+    "PipelineFailed": {
+      "Type": "Fail",
+      "Error": "PipelineFailed",
+      "Cause": "One of the child step functions failed"
+    }
+  }
+}

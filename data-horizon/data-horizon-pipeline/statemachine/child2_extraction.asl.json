@@ -1,0 +1,67 @@
+{
+  "Comment": "Child2: Extract data from source API via Map State",
+  "StartAt": "ExtractBatches",
+  "States": {
+    "ExtractBatches": {
+      "Type": "Map",
+      "ItemsPath": "$.orchestrator_output.map_items",
+      "MaxConcurrency": ${map_state_concurrency},
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "ProcessBatch",
+        "States": {
+          "ProcessBatch": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "${map_state_processor_lambda_arn}",
+              "Payload.$": "$"
+            },
+            "ResultSelector": {
+              "batch_id.$": "$.Payload.batch_id",
+              "status.$": "$.Payload.status",
+              "records_written.$": "$.Payload.records_written"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "ExtractionSuccess"
+    },
+    "ExtractionSuccess": {
+      "Type": "Succeed"
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Child2 Extraction Failed",
+        "Message.$": "States.Format('Extraction step failed: {}', $.error.Cause)"
+      },
+      "Next": "ExtractionFailed"
+    },
+    "ExtractionFailed": {
+      "Type": "Fail",
+      "Error": "ExtractionStepFailed",
+      "Cause": "Map state extraction failed"
+    }
+  }
+}

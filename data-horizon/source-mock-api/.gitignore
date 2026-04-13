@@ -1,0 +1,8 @@
+__pycache__
+.claude
+CLAUDE.md
+.ruff_cache
+build/
+terraform/.terraform/
+terraform/*.tfstate*
+terraform.tfvars

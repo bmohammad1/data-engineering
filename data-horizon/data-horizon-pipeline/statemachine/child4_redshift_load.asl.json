@@ -1,0 +1,68 @@
+{
+  "Comment": "Child4: Truncate staging tables and COPY validated data into Redshift",
+  "StartAt": "TruncateStagingTable",
+  "States": {
+    "TruncateStagingTable": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:redshiftdata:executeStatement",
+      "Parameters": {
+        "ClusterIdentifier": "${redshift_cluster_id}",
+        "Database": "${redshift_database}",
+        "DbUser": "${redshift_master_username}",
+        "Sql": "TRUNCATE TABLE staging.pipeline_data"
+      },
+      "ResultPath": "$.truncate_result",
+      "Next": "WaitForTruncate"
+    },
+    "WaitForTruncate": {
+      "Type": "Wait",
+      "Seconds": 5,
+      "Next": "CopyFromS3"
+    },
+    "CopyFromS3": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:redshiftdata:executeStatement",
+      "Parameters": {
+        "ClusterIdentifier": "${redshift_cluster_id}",
+        "Database": "${redshift_database}",
+        "DbUser": "${redshift_master_username}",
+        "Sql": "COPY staging.pipeline_data FROM 's3://${validated_bucket_name}/validated/' IAM_ROLE '${redshift_iam_role_arn}' FORMAT AS PARQUET"
+      },
+      "ResultPath": "$.copy_result",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "RedshiftLoadSuccess"
+    },
+    "RedshiftLoadSuccess": {
+      "Type": "Succeed"
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Child4 Redshift Load Failed",
+        "Message.$": "States.Format('Redshift load step failed: {}', $.error.Cause)"
+      },
+      "Next": "RedshiftLoadFailed"
+    },
+    "RedshiftLoadFailed": {
+      "Type": "Fail",
+      "Error": "RedshiftLoadStepFailed",
+      "Cause": "Redshift TRUNCATE or COPY failed"
+    }
+  }
+}
