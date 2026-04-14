@@ -6,10 +6,11 @@
 module "vpc" {
   source = "./modules/vpc"
 
-  name_prefix         = local.name_prefix
-  vpc_cidr            = var.vpc_cidr
-  private_subnet_cidr = var.private_subnet_cidr
-  tags                = local.common_tags
+  name_prefix           = local.name_prefix
+  vpc_cidr              = var.vpc_cidr
+  private_subnet_cidr   = var.private_subnet_cidr
+  private_subnet_cidr_2 = var.private_subnet_cidr_2
+  tags                  = local.common_tags
 }
 
 # --- S3 Buckets ---
@@ -55,7 +56,7 @@ module "redshift" {
   database_name         = var.redshift_database_name
   master_username       = var.redshift_master_username
   master_password       = var.redshift_master_password
-  subnet_id             = module.vpc.private_subnet_id
+  subnet_ids            = module.vpc.subnet_ids
   security_group_id     = module.vpc.redshift_security_group_id
   s3_validated_bucket_arn = module.s3.validated_bucket_arn
   tags                  = local.common_tags

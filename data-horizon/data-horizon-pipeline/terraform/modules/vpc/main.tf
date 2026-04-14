@@ -1,5 +1,11 @@
 data "aws_availability_zones" "available" {
   state = "available"
+
+  # Exclude Local Zones and Wavelength Zones — they don't support Redshift.
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 resource "aws_vpc" "this" {
@@ -18,7 +24,17 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-private-subnet"
+    Name = "${var.name_prefix}-private-subnet-1"
+  })
+}
+
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = var.private_subnet_cidr_2
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-private-subnet-2"
   })
 }
 
@@ -32,6 +48,11 @@ resource "aws_route_table" "private" {
 
 resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_route_table_association" "private_2" {
+  subnet_id      = aws_subnet.private_2.id
   route_table_id = aws_route_table.private.id
 }
 

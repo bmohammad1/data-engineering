@@ -41,9 +41,9 @@ def handler(event: dict, context: object) -> dict:
     )
 
     try:
-        from lambdas.orchestrator.config_loader import load_pipeline_config, load_tags_from_s3
-        from lambdas.orchestrator.dynamodb_writer import write_run_metadata, write_tag_records
-        from lambdas.orchestrator.map_state_generator import generate_map_state_input
+        from config_loader import load_pipeline_config, load_tags_from_s3
+        from dynamodb_writer import write_run_metadata, write_tag_records
+        from map_state_generator import generate_map_state_input
 
         secret_name = os.environ.get("SECRET_NAME", "")
         config = load_pipeline_config(secret_name)

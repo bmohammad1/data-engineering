@@ -42,7 +42,23 @@ package_lambda() {
     find "${lambda_dir}" -maxdepth 1 -name "*.py" -exec cp {} "${build_dir}/" \;
 
     cd "${build_dir}"
-    zip -r -q "${zip_file}" .
+    if command -v zip &>/dev/null; then
+        zip -r -q "${zip_file}" .
+    elif command -v python &>/dev/null; then
+        python -c "
+import zipfile, os, sys
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk('.'):
+        for f in files:
+            path = os.path.join(root, f)
+            zf.write(path)
+" "${zip_file}"
+    elif command -v powershell &>/dev/null; then
+        powershell -Command "Compress-Archive -Path '.\*' -DestinationPath '${zip_file}' -Force"
+    else
+        echo "  FAIL  No zip tool found (zip, python, or powershell required)"
+        exit 1
+    fi
     cd "${PROJECT_ROOT}"
 
     rm -rf "${build_dir}"

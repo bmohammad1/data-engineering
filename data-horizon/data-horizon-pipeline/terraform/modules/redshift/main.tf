@@ -39,7 +39,7 @@ resource "aws_iam_role_policy" "redshift_s3_copy" {
 
 resource "aws_redshift_subnet_group" "this" {
   name       = "${var.name_prefix}-subnet-group"
-  subnet_ids = [var.subnet_id]
+  subnet_ids = var.subnet_ids
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-subnet-group"
