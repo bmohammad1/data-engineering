@@ -4,7 +4,8 @@
   "States": {
     "ExtractBatches": {
       "Type": "Map",
-      "MaxConcurrency.$": "$.concurrency",
+      "MaxConcurrencyPath": "$.concurrency",
+
       "ItemReader": {
         "Resource": "arn:aws:states:::s3:getObject",
         "ReaderConfig": {
@@ -41,7 +42,11 @@
             },
             "Retry": [
               {
-                "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
                 "IntervalSeconds": 2,
                 "MaxAttempts": 3,
                 "BackoffRate": 2

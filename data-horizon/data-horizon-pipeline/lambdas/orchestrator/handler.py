@@ -14,9 +14,9 @@ from botocore.exceptions import ClientError
 from shared.exceptions import PermanentError, RetryableError
 from shared.logger import configure_logging, run_id_ctx
 
-from .config_loader import load_pipeline_config, load_tags_from_s3
-from .dynamodb_writer import write_run_metadata, write_tag_records
-from .map_state_generator import generate_map_state_input
+from config_loader import load_pipeline_config, load_tags_from_s3
+from dynamodb_writer import write_run_metadata, write_tag_records
+from map_state_generator import generate_map_state_input
 
 configure_logging()
 logger = logging.getLogger(__name__)
