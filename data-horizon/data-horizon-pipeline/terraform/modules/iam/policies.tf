@@ -170,6 +170,19 @@ data "aws_iam_policy_document" "step_functions" {
     resources = ["arn:aws:events:*:*:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"]
   }
 
+  # S3: read map input JSON for distributed Map State ItemReader
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:ListBucket",
+    ]
+    resources = [
+      var.s3_orchestration_bucket_arn,
+      "${var.s3_orchestration_bucket_arn}/*",
+    ]
+  }
+
   # Invoke Lambdas
   statement {
     effect    = "Allow"

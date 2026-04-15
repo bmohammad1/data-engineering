@@ -5,7 +5,7 @@
     "ExtractBatches": {
       "Type": "Map",
       "MaxConcurrencyPath": "$.concurrency",
-
+      "ResultPath": "$.map_results",
       "ItemReader": {
         "Resource": "arn:aws:states:::s3:getObject",
         "ReaderConfig": {
