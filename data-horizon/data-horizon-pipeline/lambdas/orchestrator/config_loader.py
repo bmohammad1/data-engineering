@@ -57,13 +57,12 @@ def load_tags_from_s3(config: dict) -> list[str]:
     if not body.strip():
         raise TagFileError("Tags CSV file is empty", service="s3")
 
-    reader = csv.reader(io.StringIO(body))
+    reader = csv.DictReader(io.StringIO(body))
     tags = []
-    for i, row in enumerate(reader):
-        if i == 0: 
-            continue  # skip header
-        if row:
-            tags.append(row[0].strip())
+    for row in reader:
+        tag_id = row.get("TagID", "").strip()
+        if tag_id:
+            tags.append(tag_id)
 
     if not tags:
         raise TagFileError(

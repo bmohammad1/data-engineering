@@ -63,6 +63,11 @@ variable "map_state_concurrency" {
   type        = number
 }
 
+variable "orchestration_bucket_name" {
+  description = "S3 orchestration bucket name (holds map state input JSON files)"
+  type        = string
+}
+
 variable "statemachine_dir" {
   description = "Directory containing ASL JSON files"
   type        = string

@@ -7,14 +7,15 @@
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
         "FunctionName": "${orchestrator_lambda_arn}",
-        "Payload.$": "$"
+        "Payload": {
+          "run_id.$": "$.run_id"
+        }
       },
       "ResultPath": "$.orchestrator_output",
       "ResultSelector": {
-        "correlation_id.$": "$.Payload.correlation_id",
         "run_id.$": "$.Payload.run_id",
-        "concurrency.$": "$.Payload.concurrency",
-        "map_items.$": "$.Payload.map_items"
+        "map_items_s3_key.$": "$.Payload.map_items_s3_key",
+        "concurrency.$": "$.Payload.concurrency"
       },
       "Retry": [
         {
@@ -34,7 +35,13 @@
       "Next": "ConfigSuccess"
     },
     "ConfigSuccess": {
-      "Type": "Succeed"
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.orchestrator_output.run_id",
+        "map_items_s3_key.$": "$.orchestrator_output.map_items_s3_key",
+        "concurrency.$": "$.orchestrator_output.concurrency"
+      },
+      "End": true
     },
     "NotifyFailure": {
       "Type": "Task",

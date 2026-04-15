@@ -1,19 +1,22 @@
 """Orchestrator Lambda handler.
 
-Invoked by Child1 Step Function. Generates a run ID, loads tags from S3,
-writes run and tag metadata to DynamoDB, and produces Map State input JSON.
+Invoked by Child1 Step Function. Accepts a run_id from the event, loads tags
+from S3, writes run and tag metadata to DynamoDB, produces Map State input JSON,
+and returns the S3 key and concurrency value for the extraction step.
 """
 
 import logging
+import os
 import time
-import uuid
 
 from botocore.exceptions import ClientError
 
-import os
-
 from shared.exceptions import PermanentError, RetryableError
 from shared.logger import configure_logging, run_id_ctx
+
+from .config_loader import load_pipeline_config, load_tags_from_s3
+from .dynamodb_writer import write_run_metadata, write_tag_records
+from .map_state_generator import generate_map_state_input
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -32,7 +35,13 @@ def handler(event: dict, context: object) -> dict:
     start = time.perf_counter()
     lambda_request_id = getattr(context, "aws_request_id", "unknown")
 
-    run_id = event.get("run_id") or f"RUN-{uuid.uuid4().hex[:12].upper()}"
+    run_id = event.get("run_id")
+    if not run_id:
+        raise PermanentError(
+            "run_id is required in the event payload",
+            service="lambda",
+        )
+
     run_id_ctx.set(run_id)
 
     logger.info(
@@ -41,10 +50,6 @@ def handler(event: dict, context: object) -> dict:
     )
 
     try:
-        from config_loader import load_pipeline_config, load_tags_from_s3
-        from dynamodb_writer import write_run_metadata, write_tag_records
-        from map_state_generator import generate_map_state_input
-
         secret_name = os.environ.get("SECRET_NAME", "")
         config = load_pipeline_config(secret_name)
         tags = load_tags_from_s3(config)
@@ -92,5 +97,5 @@ def handler(event: dict, context: object) -> dict:
     return {
         "run_id": run_id,
         "map_items_s3_key": map_items_s3_key,
-        "total_tags": len(tags),
+        "concurrency": config.get("map_state_concurrency", 5),
     }

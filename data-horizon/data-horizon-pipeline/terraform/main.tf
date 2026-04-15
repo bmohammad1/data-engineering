@@ -172,6 +172,7 @@ module "step_function" {
   redshift_iam_role_arn          = module.redshift.redshift_role_arn
   sns_topic_arn                  = module.sns.topic_arn
   map_state_concurrency          = var.map_state_concurrency
+  orchestration_bucket_name      = module.s3.orchestration_bucket_name
   statemachine_dir               = "${path.module}/../statemachine"
   tags                           = local.common_tags
 }

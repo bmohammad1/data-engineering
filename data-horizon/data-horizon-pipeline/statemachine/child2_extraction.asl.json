@@ -1,14 +1,29 @@
 {
-  "Comment": "Child2: Extract data from source API via Map State",
+  "Comment": "Child2: Extract data from source API via distributed Map State",
   "StartAt": "ExtractBatches",
   "States": {
     "ExtractBatches": {
       "Type": "Map",
-      "ItemsPath": "$.orchestrator_output.map_items",
-      "MaxConcurrency": ${map_state_concurrency},
+      "MaxConcurrency.$": "$.concurrency",
+      "ItemReader": {
+        "Resource": "arn:aws:states:::s3:getObject",
+        "ReaderConfig": {
+          "InputType": "JSON"
+        },
+        "Parameters": {
+          "Bucket": "${orchestration_bucket_name}",
+          "Key.$": "$.map_items_s3_key"
+        }
+      },
+      "ItemSelector": {
+        "run_id.$": "$.run_id",
+        "tag_id.$": "$$.Map.Item.Value.tag_id",
+        "endpoint.$": "$$.Map.Item.Value.endpoint"
+      },
       "ItemProcessor": {
         "ProcessorConfig": {
-          "Mode": "INLINE"
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "STANDARD"
         },
         "StartAt": "ProcessBatch",
         "States": {
@@ -20,7 +35,7 @@
               "Payload.$": "$"
             },
             "ResultSelector": {
-              "batch_id.$": "$.Payload.batch_id",
+              "tag_id.$": "$.Payload.tag_id",
               "status.$": "$.Payload.status",
               "records_written.$": "$.Payload.records_written"
             },
@@ -46,7 +61,11 @@
       "Next": "ExtractionSuccess"
     },
     "ExtractionSuccess": {
-      "Type": "Succeed"
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id"
+      },
+      "End": true
     },
     "NotifyFailure": {
       "Type": "Task",

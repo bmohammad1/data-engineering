@@ -1,13 +1,22 @@
 {
   "Comment": "Parent pipeline: orchestrates Child1 -> Child2 -> Child3 -> Child4",
-  "StartAt": "Child1Config",
+  "StartAt": "GenerateRunId",
   "States": {
+    "GenerateRunId": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "States.Format('RUN-{}', States.UUID())"
+      },
+      "Next": "Child1Config"
+    },
     "Child1Config": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
         "StateMachineArn": "${child1_arn}",
-        "Input.$": "$"
+        "Input": {
+          "run_id.$": "$.run_id"
+        }
       },
       "ResultSelector": {
         "output.$": "$.Output"

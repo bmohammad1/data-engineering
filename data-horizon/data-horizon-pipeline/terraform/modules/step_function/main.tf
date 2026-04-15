@@ -26,7 +26,7 @@ resource "aws_sfn_state_machine" "child2_extraction" {
 
   definition = templatefile("${var.statemachine_dir}/child2_extraction.asl.json", {
     map_state_processor_lambda_arn = var.map_state_processor_lambda_arn
-    map_state_concurrency          = var.map_state_concurrency
+    orchestration_bucket_name      = var.orchestration_bucket_name
     sns_topic_arn                  = var.sns_topic_arn
   })
 

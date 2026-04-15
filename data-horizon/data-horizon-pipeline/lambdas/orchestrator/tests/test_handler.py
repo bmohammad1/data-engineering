@@ -5,7 +5,9 @@ import pytest
 from lambdas.orchestrator.handler import handler
 from lambdas.orchestrator.tests.conftest import TABLE_NAME
 from shared.constants import PK_PIPELINE_RUN, SK_METADATA, SK_TAG_STATUS_PREFIX
-from shared.exceptions import ConfigLoadError
+from shared.exceptions import ConfigLoadError, PermanentError
+
+TEST_RUN_ID = "RUN-TESTHANDLER01"
 
 
 class TestHandler:
@@ -15,26 +17,23 @@ class TestHandler:
         self.tags = sample_tags_csv
 
     def test_happy_path_return_shape(self, lambda_context):
-        result = handler({}, lambda_context)
+        result = handler({"run_id": TEST_RUN_ID}, lambda_context)
 
-        assert "run_id" in result
+        assert result["run_id"] == TEST_RUN_ID
         assert "map_items_s3_key" in result
-        assert "total_tags" in result
-        assert result["total_tags"] == 10
+        assert "concurrency" in result
 
     def test_uses_event_run_id(self, lambda_context):
         result = handler({"run_id": "RUN-CUSTOM123"}, lambda_context)
 
         assert result["run_id"] == "RUN-CUSTOM123"
 
-    def test_generates_run_id_when_not_in_event(self, lambda_context):
-        result = handler({}, lambda_context)
-
-        assert result["run_id"].startswith("RUN-")
-        assert len(result["run_id"]) == 16
+    def test_raises_if_run_id_missing(self, lambda_context):
+        with pytest.raises(PermanentError, match="run_id is required"):
+            handler({}, lambda_context)
 
     def test_writes_run_metadata_to_dynamodb(self, lambda_context):
-        result = handler({}, lambda_context)
+        result = handler({"run_id": TEST_RUN_ID}, lambda_context)
         run_id = result["run_id"]
 
         response = self.dynamodb.get_item(
@@ -49,7 +48,7 @@ class TestHandler:
         assert response["Item"]["total_tags"]["N"] == "10"
 
     def test_writes_tag_records_to_dynamodb(self, lambda_context):
-        result = handler({}, lambda_context)
+        result = handler({"run_id": TEST_RUN_ID}, lambda_context)
         run_id = result["run_id"]
 
         response = self.dynamodb.query(
@@ -67,4 +66,4 @@ class TestHandler:
         monkeypatch.setenv("SECRET_NAME", "nonexistent-secret")
 
         with pytest.raises(ConfigLoadError):
-            handler({}, lambda_context)
+            handler({"run_id": TEST_RUN_ID}, lambda_context)

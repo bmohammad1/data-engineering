@@ -26,7 +26,7 @@ data "aws_iam_policy_document" "orchestrator" {
     ]
   }
 
-  # DynamoDB: read and write run metadata
+  # DynamoDB: read and write run metadata and tag records
   statement {
     effect = "Allow"
     actions = [
@@ -34,6 +34,7 @@ data "aws_iam_policy_document" "orchestrator" {
       "dynamodb:UpdateItem",
       "dynamodb:GetItem",
       "dynamodb:Query",
+      "dynamodb:BatchWriteItem",
     ]
     resources = [var.dynamodb_table_arn]
   }
