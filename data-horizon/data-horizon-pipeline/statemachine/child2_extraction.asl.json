@@ -5,7 +5,6 @@
     "ExtractBatches": {
       "Type": "Map",
       "MaxConcurrencyPath": "$.concurrency",
-      "ResultPath": "$.map_results",
       "ItemReader": {
         "Resource": "arn:aws:states:::s3:getObject",
         "ReaderConfig": {
@@ -34,11 +33,6 @@
             "Parameters": {
               "FunctionName": "${map_state_processor_lambda_arn}",
               "Payload.$": "$"
-            },
-            "ResultSelector": {
-              "tag_id.$": "$.Payload.tag_id",
-              "status.$": "$.Payload.status",
-              "records_written.$": "$.Payload.records_written"
             },
             "Retry": [
               {
