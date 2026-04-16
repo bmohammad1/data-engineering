@@ -103,3 +103,8 @@ variable "private_subnet_cidr_2" {
   type        = string
   default     = "10.0.2.0/24"
 }
+variable "sechedule_expression_for_eventbridge" {
+  description ="Schedule hours in event bridge"
+  type        = string
+  default     = "rate(6 hours)"
+}

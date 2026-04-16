@@ -12,7 +12,10 @@ resource "aws_cloudwatch_event_target" "parent_state_machine" {
   rule     = aws_cloudwatch_event_rule.pipeline_schedule.name
   arn      = var.parent_state_machine_arn
   role_arn = var.eventbridge_role_arn
-
+  
+  input = jsonencode({
+    startFrom = "Child1"
+  })
   dead_letter_config {
     arn = var.eventbridge_failures_queue_arn
   }

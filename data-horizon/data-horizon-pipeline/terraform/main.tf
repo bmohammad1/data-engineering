@@ -186,6 +186,7 @@ module "eventbridge" {
   eventbridge_role_arn           = module.iam.eventbridge_role_arn
   eventbridge_failures_queue_arn = module.sqs.eventbridge_failures_queue_arn
   tags                           = local.common_tags
+  schedule_expression= var.sechedule_expression_for_eventbridge
 }
 
 # --- CloudWatch (log groups + alarms) ---
