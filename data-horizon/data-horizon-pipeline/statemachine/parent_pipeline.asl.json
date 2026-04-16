@@ -1,13 +1,80 @@
 {
-  "Comment": "Parent pipeline: orchestrates Child1 -> Child2 -> Child3 -> Child4",
-  "StartAt": "GenerateRunId",
+  "Comment": "Parent pipeline with safe optional inputs, skippable GenerateRunId, and mid-pipeline start support",
+  "StartAt": "DecideGenerateRunId",
   "States": {
+    "DecideGenerateRunId": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipGenerateRunId",
+          "IsPresent": true,
+          "Next": "CheckSkipGenerateRunId"
+        }
+      ],
+      "Default": "GenerateRunId"
+    },
+    "CheckSkipGenerateRunId": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipGenerateRunId",
+          "BooleanEquals": true,
+          "Next": "UseProvidedRunId"
+        }
+      ],
+      "Default": "GenerateRunId"
+    },
     "GenerateRunId": {
       "Type": "Pass",
       "Parameters": {
-        "run_id.$": "States.Format('RUN-{}', States.UUID())"
+        "run_id.$": "States.Format('RUN-{}', States.UUID())",
+        "startFrom.$": "$.startFrom"
       },
-      "Next": "Child1Config"
+      "Next": "AttachOptionalInputs"
+    },
+    "UseProvidedRunId": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "startFrom.$": "$.startFrom"
+      },
+      "Next": "AttachOptionalInputs"
+    },
+    "AttachOptionalInputs": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.manualInputs",
+          "IsPresent": true,
+          "Next": "AttachManualInputs"
+        }
+      ],
+      "Default": "DecideStartPoint"
+    },
+    "AttachManualInputs": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "startFrom.$": "$.startFrom",
+        "manualInputs.$": "$.manualInputs"
+      },
+      "Next": "DecideStartPoint"
+    },
+    "DecideStartPoint": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.startFrom",
+          "StringEquals": "child2",
+          "Next": "PrepareChild2Input"
+        },
+        {
+          "Variable": "$.startFrom",
+          "StringEquals": "child3",
+          "Next": "PrepareChild3Input"
+        }
+      ],
+      "Default": "Child1Config"
     },
     "Child1Config": {
       "Type": "Task",
@@ -25,10 +92,26 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
-          "ResultPath": "$.error"
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
         }
       ],
+      "Next": "PrepareChild2FromChild1"
+    },
+    "PrepareChild2FromChild1": {
+      "Type": "Pass",
+      "Parameters": {
+        "child2Input.$": "$.child1.output"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "Child2Extraction"
+    },
+    "PrepareChild2Input": {
+      "Type": "Pass",
+      "Parameters": {
+        "child2Input.$": "$.manualInputs.child2"
+      },
+      "ResultPath": "$.prepared",
       "Next": "Child2Extraction"
     },
     "Child2Extraction": {
@@ -36,7 +119,7 @@
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
         "StateMachineArn": "${child2_arn}",
-        "Input.$": "$.child1.output"
+        "Input.$": "$.prepared.child2Input"
       },
       "ResultSelector": {
         "output.$": "$.Output"
@@ -45,10 +128,26 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
-          "ResultPath": "$.error"
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
         }
       ],
+      "Next": "PrepareChild3FromChild2"
+    },
+    "PrepareChild3FromChild2": {
+      "Type": "Pass",
+      "Parameters": {
+        "child3Input.$": "$.child2.output"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "Child3Transformation"
+    },
+    "PrepareChild3Input": {
+      "Type": "Pass",
+      "Parameters": {
+        "child3Input.$": "$.manualInputs.child3"
+      },
+      "ResultPath": "$.prepared",
       "Next": "Child3Transformation"
     },
     "Child3Transformation": {
@@ -56,7 +155,7 @@
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
         "StateMachineArn": "${child3_arn}",
-        "Input.$": "$.child2.output"
+        "Input.$": "$.prepared.child3Input"
       },
       "ResultSelector": {
         "output.$": "$.Output"
@@ -65,10 +164,18 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
-          "ResultPath": "$.error"
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
         }
       ],
+      "Next": "PrepareChild4FromChild3"
+    },
+    "PrepareChild4FromChild3": {
+      "Type": "Pass",
+      "Parameters": {
+        "child4Input.$": "$.child3.output"
+      },
+      "ResultPath": "$.prepared",
       "Next": "Child4RedshiftLoad"
     },
     "Child4RedshiftLoad": {
@@ -76,7 +183,7 @@
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
         "StateMachineArn": "${child4_arn}",
-        "Input.$": "$.child3.output"
+        "Input.$": "$.prepared.child4Input"
       },
       "ResultSelector": {
         "output.$": "$.Output"
@@ -85,8 +192,8 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
-          "ResultPath": "$.error"
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
         }
       ],
       "Next": "PipelineSuccess"
