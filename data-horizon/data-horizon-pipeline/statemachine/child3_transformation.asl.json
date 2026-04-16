@@ -1,70 +1,13 @@
 {
-  "Comment": "Child3: Transform raw data and validate via Glue jobs",
-  "StartAt": "RunTransformJob",
+  "Comment": "Child3: Placeholder skeleton",
+  "StartAt": "StartState",
   "States": {
-    "RunTransformJob": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::glue:startJobRun.sync",
-      "Parameters": {
-        "JobName": "${transform_glue_job_name}"
-      },
-      "Retry": [
-        {
-          "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 30,
-          "MaxAttempts": 2,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
-          "ResultPath": "$.error"
-        }
-      ],
-      "Next": "RunValidationJob"
+    "StartState": {
+      "Type": "Pass",
+      "Next": "EndState"
     },
-    "RunValidationJob": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::glue:startJobRun.sync",
-      "Parameters": {
-        "JobName": "${validation_glue_job_name}"
-      },
-      "Retry": [
-        {
-          "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 30,
-          "MaxAttempts": 2,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
-          "ResultPath": "$.error"
-        }
-      ],
-      "Next": "TransformationSuccess"
-    },
-    "TransformationSuccess": {
+    "EndState": {
       "Type": "Succeed"
-    },
-    "NotifyFailure": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sns:publish",
-      "Parameters": {
-        "TopicArn": "${sns_topic_arn}",
-        "Subject": "Child3 Transformation Failed",
-        "Message.$": "States.Format('Transformation step failed: {}', $.error.Cause)"
-      },
-      "Next": "TransformationFailed"
-    },
-    "TransformationFailed": {
-      "Type": "Fail",
-      "Error": "TransformationStepFailed",
-      "Cause": "Glue transform or validation job failed"
     }
   }
 }
