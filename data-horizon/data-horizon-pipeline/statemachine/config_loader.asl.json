@@ -1,8 +1,8 @@
 {
-  "Comment": "Child1: Load source config and generate map file",
-  "StartAt": "InvokeOrchestrator",
+  "Comment": "Config Loader: load source config, generate map file, and prepare extraction input",
+  "StartAt": "LoadConfigAndGenerateMapFile",
   "States": {
-    "InvokeOrchestrator": {
+    "LoadConfigAndGenerateMapFile": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
@@ -11,6 +11,7 @@
           "run_id.$": "$.run_id"
         }
       },
+      "TimeoutSeconds": 300,
       "ResultPath": "$.orchestrator_output",
       "ResultSelector": {
         "run_id.$": "$.Payload.run_id",
@@ -28,13 +29,13 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
+          "Next": "ConfigLoaderFailed",
           "ResultPath": "$.error"
         }
       ],
-      "Next": "ConfigSuccess"
+      "Next": "ConfigLoaderSuccess"
     },
-    "ConfigSuccess": {
+    "ConfigLoaderSuccess": {
       "Type": "Pass",
       "Parameters": {
         "run_id.$": "$.orchestrator_output.run_id",
@@ -43,19 +44,9 @@
       },
       "End": true
     },
-    "NotifyFailure": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sns:publish",
-      "Parameters": {
-        "TopicArn": "${sns_topic_arn}",
-        "Subject": "Child1 Config Failed",
-        "Message.$": "States.Format('Config step failed: {}', $.error.Cause)"
-      },
-      "Next": "ConfigFailed"
-    },
-    "ConfigFailed": {
+    "ConfigLoaderFailed": {
       "Type": "Fail",
-      "Error": "ConfigStepFailed",
+      "Error": "ConfigLoaderFailed",
       "Cause": "Orchestrator Lambda failed"
     }
   }

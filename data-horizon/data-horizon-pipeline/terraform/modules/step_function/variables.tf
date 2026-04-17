@@ -73,6 +73,12 @@ variable "statemachine_dir" {
   type        = string
 }
 
+variable "retention_days" {
+  description = "CloudWatch log group retention in days"
+  type        = number
+  default     = 30
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

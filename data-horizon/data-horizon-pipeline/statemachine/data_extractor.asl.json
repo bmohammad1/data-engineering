@@ -1,8 +1,8 @@
 {
-  "Comment": "Child2: Extract data from source API via distributed Map State",
-  "StartAt": "ExtractBatches",
+  "Comment": "Data Extractor: fan-out API extraction via distributed Map State",
+  "StartAt": "FanOutApiExtraction",
   "States": {
-    "ExtractBatches": {
+    "FanOutApiExtraction": {
       "Type": "Map",
       "MaxConcurrencyPath": "$.concurrency",
       "ItemReader": {
@@ -25,15 +25,16 @@
           "Mode": "DISTRIBUTED",
           "ExecutionType": "STANDARD"
         },
-        "StartAt": "ProcessBatch",
+        "StartAt": "InvokeTagExtractor",
         "States": {
-          "ProcessBatch": {
+          "InvokeTagExtractor": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Parameters": {
               "FunctionName": "${map_state_processor_lambda_arn}",
               "Payload.$": "$"
             },
+            "TimeoutSeconds": 60,
             "Retry": [
               {
                 "ErrorEquals": [
@@ -54,33 +55,23 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "NotifyFailure",
+          "Next": "DataExtractorFailed",
           "ResultPath": "$.error"
         }
       ],
       "ResultPath": null,
-      "Next": "ExtractionSuccess"
+      "Next": "DataExtractorSuccess"
     },
-    "ExtractionSuccess": {
+    "DataExtractorSuccess": {
       "Type": "Pass",
       "Parameters": {
         "run_id.$": "$.run_id"
       },
       "End": true
     },
-    "NotifyFailure": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sns:publish",
-      "Parameters": {
-        "TopicArn": "${sns_topic_arn}",
-        "Subject": "Child2 Extraction Failed",
-        "Message.$": "States.Format('Extraction step failed: {}', $.error.Cause)"
-      },
-      "Next": "ExtractionFailed"
-    },
-    "ExtractionFailed": {
+    "DataExtractorFailed": {
       "Type": "Fail",
-      "Error": "ExtractionStepFailed",
+      "Error": "DataExtractorFailed",
       "Cause": "Map state extraction failed"
     }
   }

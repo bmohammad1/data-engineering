@@ -75,7 +75,7 @@ resource "aws_cloudwatch_metric_alarm" "child1_config_failed" {
   period              = 300
   statistic           = "Sum"
   threshold           = 0
-  alarm_description   = "Child1 (config) Step Function had a failed execution"
+  alarm_description   = "Config Loader Step Function had a failed execution"
   alarm_actions       = [var.sns_topic_arn]
   treat_missing_data  = "notBreaching"
 
@@ -95,7 +95,7 @@ resource "aws_cloudwatch_metric_alarm" "child2_extraction_failed" {
   period              = 300
   statistic           = "Sum"
   threshold           = 0
-  alarm_description   = "Child2 (extraction) Step Function had a failed execution"
+  alarm_description   = "Data Extractor Step Function had a failed execution"
   alarm_actions       = [var.sns_topic_arn]
   treat_missing_data  = "notBreaching"
 
@@ -115,7 +115,7 @@ resource "aws_cloudwatch_metric_alarm" "child3_transformation_failed" {
   period              = 300
   statistic           = "Sum"
   threshold           = 0
-  alarm_description   = "Child3 (transformation) Step Function had a failed execution"
+  alarm_description   = "Transformation Step Function had a failed execution"
   alarm_actions       = [var.sns_topic_arn]
   treat_missing_data  = "notBreaching"
 
@@ -135,7 +135,7 @@ resource "aws_cloudwatch_metric_alarm" "child4_redshift_load_failed" {
   period              = 300
   statistic           = "Sum"
   threshold           = 0
-  alarm_description   = "Child4 (Redshift load) Step Function had a failed execution"
+  alarm_description   = "Redshift Load Step Function had a failed execution"
   alarm_actions       = [var.sns_topic_arn]
   treat_missing_data  = "notBreaching"
 

@@ -1,5 +1,5 @@
 {
-  "Comment": "Parent pipeline with safe optional inputs, skippable GenerateRunId, and mid-pipeline start support",
+  "Comment": "Modular Orchestrator: coordinates Config Loader → Data Extractor → Transformation → Redshift Load",
   "StartAt": "DecideGenerateRunId",
   "States": {
     "DecideGenerateRunId": {
@@ -65,143 +65,147 @@
       "Choices": [
         {
           "Variable": "$.startFrom",
-          "StringEquals": "child2",
-          "Next": "PrepareChild2Input"
+          "StringEquals": "data_extractor",
+          "Next": "PrepareExtractorInputManual"
         },
         {
           "Variable": "$.startFrom",
-          "StringEquals": "child3",
-          "Next": "PrepareChild3Input"
+          "StringEquals": "transformation",
+          "Next": "PrepareTransformationInputManual"
         }
       ],
-      "Default": "Child1Config"
+      "Default": "RunConfigLoader"
     },
-    "Child1Config": {
+    "RunConfigLoader": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
-        "StateMachineArn": "${child1_arn}",
+        "StateMachineArn": "${config_loader_arn}",
         "Input": {
           "run_id.$": "$.run_id"
         }
       },
+      "TimeoutSeconds": 600,
       "ResultSelector": {
         "output.$": "$.Output"
       },
-      "ResultPath": "$.child1",
+      "ResultPath": "$.config_loader",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.error",
-          "Next": "NotifyFailure"
+          "Next": "NotifyOrchestratorFailure"
         }
       ],
-      "Next": "PrepareChild2FromChild1"
+      "Next": "PrepareExtractorInputFromConfig"
     },
-    "PrepareChild2FromChild1": {
+    "PrepareExtractorInputFromConfig": {
       "Type": "Pass",
       "Parameters": {
-        "child2Input.$": "$.child1.output"
+        "extractor_input.$": "$.config_loader.output"
       },
       "ResultPath": "$.prepared",
-      "Next": "Child2Extraction"
+      "Next": "RunDataExtractor"
     },
-    "PrepareChild2Input": {
+    "PrepareExtractorInputManual": {
       "Type": "Pass",
       "Parameters": {
-        "child2Input.$": "$.manualInputs.child2"
+        "extractor_input.$": "$.manualInputs.data_extractor"
       },
       "ResultPath": "$.prepared",
-      "Next": "Child2Extraction"
+      "Next": "RunDataExtractor"
     },
-    "Child2Extraction": {
+    "RunDataExtractor": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
-        "StateMachineArn": "${child2_arn}",
-        "Input.$": "$.prepared.child2Input"
+        "StateMachineArn": "${data_extractor_arn}",
+        "Input.$": "$.prepared.extractor_input"
       },
+      "TimeoutSeconds": 7200,
       "ResultSelector": {
         "output.$": "$.Output"
       },
-      "ResultPath": "$.child2",
+      "ResultPath": "$.data_extractor",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.error",
-          "Next": "NotifyFailure"
+          "Next": "NotifyOrchestratorFailure"
         }
       ],
-      "Next": "PrepareChild3FromChild2"
+      "Next": "PrepareTransformationInputFromExtractor"
     },
-    "PrepareChild3FromChild2": {
+    "PrepareTransformationInputFromExtractor": {
       "Type": "Pass",
       "Parameters": {
-        "child3Input.$": "$.child2.output"
+        "transformation_input.$": "$.data_extractor.output"
       },
       "ResultPath": "$.prepared",
-      "Next": "Child3Transformation"
+      "Next": "RunTransformation"
     },
-    "PrepareChild3Input": {
+    "PrepareTransformationInputManual": {
       "Type": "Pass",
       "Parameters": {
-        "child3Input.$": "$.manualInputs.child3"
+        "transformation_input.$": "$.manualInputs.transformation"
       },
       "ResultPath": "$.prepared",
-      "Next": "Child3Transformation"
+      "Next": "RunTransformation"
     },
-    "Child3Transformation": {
+    "RunTransformation": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
-        "StateMachineArn": "${child3_arn}",
-        "Input.$": "$.prepared.child3Input"
+        "StateMachineArn": "${transformation_arn}",
+        "Input.$": "$.prepared.transformation_input"
       },
+      "TimeoutSeconds": 3600,
       "ResultSelector": {
         "output.$": "$.Output"
       },
-      "ResultPath": "$.child3",
+      "ResultPath": "$.transformation",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.error",
-          "Next": "NotifyFailure"
+          "Next": "NotifyOrchestratorFailure"
         }
       ],
-      "Next": "PrepareChild4FromChild3"
+      "Next": "PrepareRedshiftInputFromTransformation"
     },
-    "PrepareChild4FromChild3": {
+    "PrepareRedshiftInputFromTransformation": {
       "Type": "Pass",
       "Parameters": {
-        "child4Input.$": "$.child3.output"
+        "redshift_input.$": "$.transformation.output"
       },
       "ResultPath": "$.prepared",
-      "Next": "Child4RedshiftLoad"
+      "Next": "RunRedshiftLoad"
     },
-    "Child4RedshiftLoad": {
+    "RunRedshiftLoad": {
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
-        "StateMachineArn": "${child4_arn}",
-        "Input.$": "$.prepared.child4Input"
+        "StateMachineArn": "${redshift_load_arn}",
+        "Input.$": "$.prepared.redshift_input"
       },
+      "TimeoutSeconds": 1800,
       "ResultSelector": {
         "output.$": "$.Output"
       },
-      "ResultPath": "$.child4",
+      "ResultPath": "$.redshift_load",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.error",
-          "Next": "NotifyFailure"
+          "Next": "NotifyOrchestratorFailure"
         }
       ],
-      "Next": "PipelineSuccess"
+      "Next": "OrchestratorSuccess"
     },
-    "PipelineSuccess": {
+    "OrchestratorSuccess": {
       "Type": "Succeed"
     },
-    "NotifyFailure": {
+    "NotifyOrchestratorFailure": {
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
@@ -209,11 +213,11 @@
         "Subject": "Data Horizon Pipeline Failed",
         "Message.$": "States.Format('Pipeline failed at step: {}', $.error.Cause)"
       },
-      "Next": "PipelineFailed"
+      "Next": "OrchestratorFailed"
     },
-    "PipelineFailed": {
+    "OrchestratorFailed": {
       "Type": "Fail",
-      "Error": "PipelineFailed",
+      "Error": "OrchestratorFailed",
       "Cause": "One of the child step functions failed"
     }
   }
