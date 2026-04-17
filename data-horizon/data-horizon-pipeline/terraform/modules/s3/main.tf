@@ -1,12 +1,18 @@
+data "aws_caller_identity" "current" {}
+
 locals {
+  # Use the last 8 digits of the account ID as a suffix so bucket names are
+  # unique across sandbox accounts and never collide on re-creation.
+  account_suffix = substr(data.aws_caller_identity.current.account_id, -8, -1)
+
   buckets = {
-    raw           = "${var.name_prefix}-raw"
-    cleaned       = "${var.name_prefix}-cleaned"
-    validated       = "${var.name_prefix}-validated"
-    bad           = "${var.name_prefix}-bad"
-    scripts       = "${var.name_prefix}-scripts"
-    orchestration = "${var.name_prefix}-orchestration"
-    config        = "${var.name_prefix}-config"
+    raw           = "${var.name_prefix}-raw-${local.account_suffix}"
+    cleaned       = "${var.name_prefix}-cleaned-${local.account_suffix}"
+    validated     = "${var.name_prefix}-validated-${local.account_suffix}"
+    bad           = "${var.name_prefix}-bad-${local.account_suffix}"
+    scripts       = "${var.name_prefix}-scripts-${local.account_suffix}"
+    orchestration = "${var.name_prefix}-orchestration-${local.account_suffix}"
+    config        = "${var.name_prefix}-config-${local.account_suffix}"
   }
 }
 

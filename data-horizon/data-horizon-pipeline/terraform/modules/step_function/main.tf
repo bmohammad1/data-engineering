@@ -1,77 +1,4 @@
 # =============================================================================
-# CloudWatch Log Groups for Step Functions execution logging
-# =============================================================================
-
-resource "aws_cloudwatch_log_group" "modular_orchestrator" {
-  name              = "/aws/vendedlogs/states/${var.name_prefix}-modular-orchestrator"
-  retention_in_days = var.retention_days
-
-  tags = merge(var.tags, {
-    Name = "${var.name_prefix}-modular-orchestrator-logs"
-  })
-}
-
-resource "aws_cloudwatch_log_group" "config_loader" {
-  name              = "/aws/vendedlogs/states/${var.name_prefix}-config-loader"
-  retention_in_days = var.retention_days
-
-  tags = merge(var.tags, {
-    Name = "${var.name_prefix}-config-loader-logs"
-  })
-}
-
-resource "aws_cloudwatch_log_group" "data_extractor" {
-  name              = "/aws/vendedlogs/states/${var.name_prefix}-data-extractor"
-  retention_in_days = var.retention_days
-
-  tags = merge(var.tags, {
-    Name = "${var.name_prefix}-data-extractor-logs"
-  })
-}
-
-resource "aws_cloudwatch_log_group" "transformation" {
-  name              = "/aws/vendedlogs/states/${var.name_prefix}-transformation"
-  retention_in_days = var.retention_days
-
-  tags = merge(var.tags, {
-    Name = "${var.name_prefix}-transformation-logs"
-  })
-}
-
-resource "aws_cloudwatch_log_group" "redshift_load" {
-  name              = "/aws/vendedlogs/states/${var.name_prefix}-redshift-load"
-  retention_in_days = var.retention_days
-
-  tags = merge(var.tags, {
-    Name = "${var.name_prefix}-redshift-load-logs"
-  })
-}
-
-# =============================================================================
-# CloudWatch resource policy — allows delivery.logs.amazonaws.com to write to
-# all Step Functions log groups in this prefix
-# =============================================================================
-
-resource "aws_cloudwatch_log_resource_policy" "step_functions" {
-  policy_name = "${var.name_prefix}-step-functions-log-delivery"
-
-  policy_document = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "delivery.logs.amazonaws.com" }
-      Action    = ["logs:CreateLogStream", "logs:PutLogEvents"]
-      Resource  = "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/vendedlogs/states/${var.name_prefix}-*:*"
-      Condition = {
-        StringEquals = {
-          "aws:SourceAccount" = var.aws_account_id
-        }
-      }
-    }]
-  })
-}
-
-# =============================================================================
 # Config Loader — loads source config and generates the extraction map file
 # =============================================================================
 
@@ -82,14 +9,6 @@ resource "aws_sfn_state_machine" "config_loader" {
   definition = templatefile("${var.statemachine_dir}/config_loader.asl.json", {
     orchestrator_lambda_arn = var.orchestrator_lambda_arn
   })
-
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.config_loader.arn}:*"
-    include_execution_data = false
-    level                  = "ERROR"
-  }
-
-  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-config-loader"
@@ -109,14 +28,6 @@ resource "aws_sfn_state_machine" "data_extractor" {
     orchestration_bucket_name      = var.orchestration_bucket_name
   })
 
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.data_extractor.arn}:*"
-    include_execution_data = false
-    level                  = "ERROR"
-  }
-
-  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
-
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-data-extractor"
   })
@@ -135,14 +46,6 @@ resource "aws_sfn_state_machine" "transformation" {
     validation_glue_job_name = var.validation_glue_job_name
     sns_topic_arn            = var.sns_topic_arn
   })
-
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.transformation.arn}:*"
-    include_execution_data = false
-    level                  = "ERROR"
-  }
-
-  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-transformation"
@@ -166,14 +69,6 @@ resource "aws_sfn_state_machine" "redshift_load" {
     sns_topic_arn            = var.sns_topic_arn
   })
 
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.redshift_load.arn}:*"
-    include_execution_data = false
-    level                  = "ERROR"
-  }
-
-  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
-
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-redshift-load"
   })
@@ -194,14 +89,6 @@ resource "aws_sfn_state_machine" "modular_orchestrator" {
     redshift_load_arn  = aws_sfn_state_machine.redshift_load.arn
     sns_topic_arn      = var.sns_topic_arn
   })
-
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.modular_orchestrator.arn}:*"
-    include_execution_data = false
-    level                  = "ERROR"
-  }
-
-  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-modular-orchestrator"

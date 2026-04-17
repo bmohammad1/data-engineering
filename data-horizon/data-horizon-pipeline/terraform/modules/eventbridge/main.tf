@@ -14,7 +14,7 @@ resource "aws_cloudwatch_event_target" "parent_state_machine" {
   role_arn = var.eventbridge_role_arn
   
   input = jsonencode({
-    startFrom = "Child1"
+    startFrom = "config_loader"
   })
   dead_letter_config {
     arn = var.eventbridge_failures_queue_arn

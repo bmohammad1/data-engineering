@@ -172,11 +172,8 @@ module "step_function" {
   redshift_iam_role_arn          = module.redshift.redshift_role_arn
   sns_topic_arn             = module.sns.topic_arn
   map_state_concurrency     = var.map_state_concurrency
-  aws_account_id            = data.aws_caller_identity.current.account_id
-  aws_region                = data.aws_region.current.name
   orchestration_bucket_name = module.s3.orchestration_bucket_name
   statemachine_dir          = "${path.module}/../statemachine"
-  retention_days            = var.log_retention_days
   tags                      = local.common_tags
 }
 
