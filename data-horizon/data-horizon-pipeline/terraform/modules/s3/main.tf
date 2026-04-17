@@ -102,6 +102,16 @@ resource "aws_s3_bucket_public_access_block" "all" {
   ]
 }
 
+# --- source_config/ folder placeholder in config bucket ---
+
+resource "aws_s3_object" "config_source_config_folder" {
+  bucket  = aws_s3_bucket.config.id
+  key     = "source_config/"
+  content = ""
+
+  depends_on = [aws_s3_bucket.config]
+}
+
 # --- Versioning on config bucket ---
 
 resource "aws_s3_bucket_versioning" "config" {
