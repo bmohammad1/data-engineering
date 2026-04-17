@@ -227,7 +227,7 @@ data "aws_iam_policy_document" "step_functions" {
     resources = [var.sns_topic_arn]
   }
 
-  # CloudWatch Logs
+  # CloudWatch Logs — delivery management (required for logging_configuration)
   statement {
     effect = "Allow"
     actions = [
@@ -241,6 +241,13 @@ data "aws_iam_policy_document" "step_functions" {
       "logs:DescribeLogGroups",
     ]
     resources = ["*"]
+  }
+
+  # CloudWatch Logs — write execution events to log groups
+  statement {
+    effect    = "Allow"
+    actions   = ["logs:PutLogEvents"]
+    resources = ["arn:aws:logs:*:*:log-group:/aws/vendedlogs/states/*:*"]
   }
 }
 

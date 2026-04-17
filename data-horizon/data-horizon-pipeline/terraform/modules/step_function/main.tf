@@ -48,6 +48,30 @@ resource "aws_cloudwatch_log_group" "redshift_load" {
 }
 
 # =============================================================================
+# CloudWatch resource policy — allows delivery.logs.amazonaws.com to write to
+# all Step Functions log groups in this prefix
+# =============================================================================
+
+resource "aws_cloudwatch_log_resource_policy" "step_functions" {
+  policy_name = "${var.name_prefix}-step-functions-log-delivery"
+
+  policy_document = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "delivery.logs.amazonaws.com" }
+      Action    = ["logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource  = "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/vendedlogs/states/${var.name_prefix}-*:*"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = var.aws_account_id
+        }
+      }
+    }]
+  })
+}
+
+# =============================================================================
 # Config Loader — loads source config and generates the extraction map file
 # =============================================================================
 
@@ -64,6 +88,8 @@ resource "aws_sfn_state_machine" "config_loader" {
     include_execution_data = false
     level                  = "ERROR"
   }
+
+  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-config-loader"
@@ -89,6 +115,8 @@ resource "aws_sfn_state_machine" "data_extractor" {
     level                  = "ERROR"
   }
 
+  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
+
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-data-extractor"
   })
@@ -113,6 +141,8 @@ resource "aws_sfn_state_machine" "transformation" {
     include_execution_data = false
     level                  = "ERROR"
   }
+
+  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-transformation"
@@ -142,6 +172,8 @@ resource "aws_sfn_state_machine" "redshift_load" {
     level                  = "ERROR"
   }
 
+  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
+
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-redshift-load"
   })
@@ -168,6 +200,8 @@ resource "aws_sfn_state_machine" "modular_orchestrator" {
     include_execution_data = false
     level                  = "ERROR"
   }
+
+  depends_on = [aws_cloudwatch_log_resource_policy.step_functions]
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-modular-orchestrator"

@@ -73,6 +73,16 @@ variable "statemachine_dir" {
   type        = string
 }
 
+variable "aws_account_id" {
+  description = "AWS account ID (used to build CloudWatch resource policy ARN)"
+  type        = string
+}
+
+variable "aws_region" {
+  description = "AWS region (used to build CloudWatch resource policy ARN)"
+  type        = string
+}
+
 variable "retention_days" {
   description = "CloudWatch log group retention in days"
   type        = number
