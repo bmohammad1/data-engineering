@@ -26,6 +26,7 @@ resource "aws_sfn_state_machine" "data_extractor" {
   definition = templatefile("${var.statemachine_dir}/data_extractor.asl.json", {
     map_state_processor_lambda_arn = var.map_state_processor_lambda_arn
     orchestration_bucket_name      = var.orchestration_bucket_name
+    extraction_failures_queue_url  = var.extraction_failures_queue_url
   })
 
   tags = merge(var.tags, {

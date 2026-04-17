@@ -68,6 +68,11 @@ variable "orchestration_bucket_name" {
   type        = string
 }
 
+variable "extraction_failures_queue_url" {
+  description = "SQS URL for extraction failures dead-letter queue"
+  type        = string
+}
+
 variable "statemachine_dir" {
   description = "Directory containing ASL JSON files"
   type        = string

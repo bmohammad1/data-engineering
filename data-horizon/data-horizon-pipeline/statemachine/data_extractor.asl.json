@@ -5,6 +5,7 @@
     "FanOutApiExtraction": {
       "Type": "Map",
       "MaxConcurrencyPath": "$.concurrency",
+      "ToleratedFailurePercentage": 50,
       "ItemReader": {
         "Resource": "arn:aws:states:::s3:getObject",
         "ReaderConfig": {
@@ -47,8 +48,30 @@
                 "BackoffRate": 2
               }
             ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.catch",
+                "Next": "SendToExtractionFailures"
+              }
+            ],
             "ResultPath": null,
             "End": true
+          },
+          "SendToExtractionFailures": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sqs:sendMessage",
+            "Parameters": {
+              "QueueUrl": "${extraction_failures_queue_url}",
+              "MessageBody.$": "States.Format('Extraction failed for tag: {} in run: {} | Error: {} | Cause: {}', $.tag_id, $.run_id, $.catch.Error, $.catch.Cause)"
+            },
+            "ResultPath": null,
+            "Next": "TagExtractionFailed"
+          },
+          "TagExtractionFailed": {
+            "Type": "Fail",
+            "Error": "TagExtractionFailed",
+            "Cause": "Lambda failed after all retries"
           }
         }
       },
@@ -56,7 +79,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "DataExtractorFailed",
-          "ResultPath": "$.error"
+          "ResultPath": null
         }
       ],
       "ResultPath": null,

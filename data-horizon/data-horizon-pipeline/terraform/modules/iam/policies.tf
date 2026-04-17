@@ -220,6 +220,13 @@ data "aws_iam_policy_document" "step_functions" {
     resources = ["*"]
   }
 
+  # SQS: send failed items to extraction failures queue
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.extraction_failures_queue_arn]
+  }
+
   # SNS: publish failure notifications
   statement {
     effect    = "Allow"
