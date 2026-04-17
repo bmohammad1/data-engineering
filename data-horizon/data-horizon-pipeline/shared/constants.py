@@ -10,10 +10,13 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 SECRET_NAME = os.environ.get("SECRET_NAME", "")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
-PK_PIPELINE_RUN = "PIPELINE_RUN#"
-SK_METADATA = "METADATA"
-SK_TAG_STATUS_PREFIX = "TAG_STATUS#"
-SK_LOAD_METRICS = "LOAD_METRICS"
+# Primary key prefixes — PipelineAudit single-table schema
+PK_RUN_PREFIX = "RUN#"
+SK_META = "META"
+SK_TAG_PREFIX = "TAG#"
+
+# GSI key prefix
+GSI1PK_PIPELINE_PREFIX = "PIPELINE#"
 
 STATUS_RUNNING = "RUNNING"
 STATUS_PENDING = "PENDING"

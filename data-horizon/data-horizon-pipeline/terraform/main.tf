@@ -126,7 +126,7 @@ module "lambda" {
   name_prefix            = local.name_prefix
   environment            = var.environment
   secret_name            = module.secrets_manager.secret_name
-  orchestrator_role_arn  = module.iam.lambda_orchestrator_role_arn
+  config_loader_role_arn = module.iam.lambda_config_loader_role_arn
   map_processor_role_arn = module.iam.lambda_map_processor_role_arn
   memory_size            = var.lambda_memory_size
   timeout                = var.lambda_timeout
@@ -161,7 +161,7 @@ module "step_function" {
 
   name_prefix                    = local.name_prefix
   step_functions_role_arn        = module.iam.step_functions_role_arn
-  orchestrator_lambda_arn        = module.lambda.orchestrator_function_arn
+  config_loader_lambda_arn       = module.lambda.config_loader_function_arn
   map_state_processor_lambda_arn = module.lambda.map_state_processor_function_arn
   transform_glue_job_name        = module.glue.transform_job_name
   validation_glue_job_name       = module.glue.validation_job_name
@@ -196,7 +196,7 @@ module "cloudwatch" {
 
   name_prefix                       = local.name_prefix
   retention_days                    = var.log_retention_days
-  orchestrator_function_name        = module.lambda.orchestrator_function_name
+  config_loader_function_name       = module.lambda.config_loader_function_name
   map_state_processor_function_name = module.lambda.map_state_processor_function_name
   transform_glue_job_name           = module.glue.transform_job_name
   validation_glue_job_name          = module.glue.validation_job_name

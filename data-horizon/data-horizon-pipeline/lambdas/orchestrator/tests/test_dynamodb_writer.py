@@ -5,32 +5,38 @@ import pytest
 
 from lambdas.orchestrator.dynamodb_writer import write_run_metadata, write_tag_records
 from lambdas.orchestrator.tests.conftest import REGION, TABLE_NAME
-from shared.constants import PK_PIPELINE_RUN, SK_METADATA, SK_TAG_STATUS_PREFIX, STATUS_PENDING, STATUS_RUNNING
+from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX, STATUS_PENDING, STATUS_RUNNING
 from shared.exceptions import DynamoDBError
 
 
 class TestWriteRunMetadata:
     def test_writes_correct_item(self, dynamodb_table):
-        write_run_metadata(TABLE_NAME, "RUN-TEST001", total_tags=100)
+        write_run_metadata(TABLE_NAME, "RUN-TEST001", total_tags=100, environment="test")
 
         response = dynamodb_table.get_item(
             TableName=TABLE_NAME,
             Key={
-                "PK": {"S": f"{PK_PIPELINE_RUN}RUN-TEST001"},
-                "SK": {"S": SK_METADATA},
+                "PK": {"S": f"{PK_RUN_PREFIX}RUN-TEST001"},
+                "SK": {"S": SK_META},
             },
         )
         item = response["Item"]
 
         assert item["run_id"]["S"] == "RUN-TEST001"
         assert item["total_tags"]["N"] == "100"
-        assert item["success_count"]["N"] == "0"
-        assert item["failure_count"]["N"] == "0"
-        assert item["final_status"]["S"] == STATUS_RUNNING
+        assert item["status"]["S"] == STATUS_RUNNING
+        assert item["pipeline_name"]["S"] == "data_horizon"
+        assert item["environment"]["S"] == "test"
+        assert item["trigger_type"]["S"] == "schedule"
+        assert "start_time" in item
+        assert "created_at" in item
+        assert "ttl" in item
+        assert item["GSI1PK"]["S"] == "PIPELINE#data_horizon"
+        assert "GSI1SK" in item
 
     def test_raises_dynamodb_error_on_failure(self, aws):
         with pytest.raises(DynamoDBError):
-            write_run_metadata("nonexistent-table", "RUN-FAIL", total_tags=1)
+            write_run_metadata("nonexistent-table", "RUN-FAIL", total_tags=1, environment="test")
 
 
 class TestWriteTagRecords:
@@ -42,8 +48,8 @@ class TestWriteTagRecords:
             TableName=TABLE_NAME,
             KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
             ExpressionAttributeValues={
-                ":pk": {"S": f"{PK_PIPELINE_RUN}RUN-TEST001"},
-                ":prefix": {"S": SK_TAG_STATUS_PREFIX},
+                ":pk": {"S": f"{PK_RUN_PREFIX}RUN-TEST001"},
+                ":prefix": {"S": SK_TAG_PREFIX},
             },
         )
 
@@ -55,16 +61,20 @@ class TestWriteTagRecords:
         response = dynamodb_table.get_item(
             TableName=TABLE_NAME,
             Key={
-                "PK": {"S": f"{PK_PIPELINE_RUN}RUN-TEST001"},
-                "SK": {"S": f"{SK_TAG_STATUS_PREFIX}TAG-00001"},
+                "PK": {"S": f"{PK_RUN_PREFIX}RUN-TEST001"},
+                "SK": {"S": f"{SK_TAG_PREFIX}TAG-00001"},
             },
         )
         item = response["Item"]
 
-        assert item["final_status"]["S"] == STATUS_PENDING
-        assert item["attempts"]["N"] == "0"
-        assert item["records_received"]["N"] == "0"
-        assert item["error_code"]["NULL"] is True
+        assert item["overall_status"]["S"] == STATUS_PENDING
+        assert item["tag_key"]["S"] == "TAG-00001"
+        assert item["pipeline_name"]["S"] == "data_horizon"
+        assert item["stage_status"]["M"]["EXTRACT"]["S"] == STATUS_PENDING
+        assert item["stage_status"]["M"]["TRANSFORM"]["S"] == STATUS_PENDING
+        assert item["stage_status"]["M"]["VALIDATE"]["S"] == STATUS_PENDING
+        assert "created_at" in item
+        assert "ttl" in item
 
     def test_large_batch_exceeding_25_limit(self, dynamodb_table):
         tags = [f"TAG-{i:05d}" for i in range(1, 31)]
@@ -74,8 +84,8 @@ class TestWriteTagRecords:
             TableName=TABLE_NAME,
             KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
             ExpressionAttributeValues={
-                ":pk": {"S": f"{PK_PIPELINE_RUN}RUN-TEST001"},
-                ":prefix": {"S": SK_TAG_STATUS_PREFIX},
+                ":pk": {"S": f"{PK_RUN_PREFIX}RUN-TEST001"},
+                ":prefix": {"S": SK_TAG_PREFIX},
             },
         )
 
@@ -87,8 +97,8 @@ class TestWriteTagRecords:
         response = dynamodb_table.get_item(
             TableName=TABLE_NAME,
             Key={
-                "PK": {"S": f"{PK_PIPELINE_RUN}RUN-TEST001"},
-                "SK": {"S": f"{SK_TAG_STATUS_PREFIX}TAG-00042"},
+                "PK": {"S": f"{PK_RUN_PREFIX}RUN-TEST001"},
+                "SK": {"S": f"{SK_TAG_PREFIX}TAG-00042"},
             },
         )
 

@@ -4,7 +4,7 @@ import pytest
 
 from lambdas.orchestrator.handler import handler
 from lambdas.orchestrator.tests.conftest import TABLE_NAME
-from shared.constants import PK_PIPELINE_RUN, SK_METADATA, SK_TAG_STATUS_PREFIX
+from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX
 from shared.exceptions import ConfigLoadError, PermanentError
 
 TEST_RUN_ID = "RUN-TESTHANDLER01"
@@ -39,8 +39,8 @@ class TestHandler:
         response = self.dynamodb.get_item(
             TableName=TABLE_NAME,
             Key={
-                "PK": {"S": f"{PK_PIPELINE_RUN}{run_id}"},
-                "SK": {"S": SK_METADATA},
+                "PK": {"S": f"{PK_RUN_PREFIX}{run_id}"},
+                "SK": {"S": SK_META},
             },
         )
 
@@ -55,8 +55,8 @@ class TestHandler:
             TableName=TABLE_NAME,
             KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
             ExpressionAttributeValues={
-                ":pk": {"S": f"{PK_PIPELINE_RUN}{run_id}"},
-                ":prefix": {"S": SK_TAG_STATUS_PREFIX},
+                ":pk": {"S": f"{PK_RUN_PREFIX}{run_id}"},
+                ":prefix": {"S": SK_TAG_PREFIX},
             },
         )
 

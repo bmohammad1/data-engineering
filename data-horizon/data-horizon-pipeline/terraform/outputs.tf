@@ -55,9 +55,9 @@ output "secret_name" {
 
 # --- Lambda ---
 
-output "orchestrator_function_name" {
-  description = "Orchestrator Lambda function name"
-  value       = module.lambda.orchestrator_function_name
+output "config_loader_function_name" {
+  description = "Config Loader Lambda function name"
+  value       = module.lambda.config_loader_function_name
 }
 
 output "map_state_processor_function_name" {

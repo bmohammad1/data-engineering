@@ -33,7 +33,7 @@ def load_pipeline_config(secret_name: str) -> dict:
             service="secretsmanager",
         )
 
-    logger.info("Pipeline config loaded", extra={"secret_name": secret_name})
+    logger.debug("Pipeline config loaded", extra={"secret_name": secret_name})
     return config
 
 
@@ -71,5 +71,5 @@ def load_tags_from_s3(config: dict) -> list[str]:
             service="s3",
         )
 
-    logger.info("Tags loaded from S3", extra={"tag_count": len(tags)})
+    logger.debug("Tags loaded from S3", extra={"tag_count": len(tags)})
     return tags

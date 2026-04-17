@@ -1,8 +1,8 @@
 """Map State Processor Lambda handler.
 
-Invoked once per tag item by Child2's distributed Map State. Fetches tag data
-from the source API using a Bearer token from Secrets Manager, writes the raw
-response to S3, and updates the DynamoDB tag status record.
+Invoked once per tag item by the Data Extractor state machine's distributed Map
+State. Fetches tag data from the source API using a Bearer token from Secrets
+Manager, writes the raw response to S3, and updates the DynamoDB tag record.
 """
 
 import logging
@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 def _load_config() -> dict:
     """Load pipeline config from Secrets Manager."""
-    # Import here to keep the shared module import path consistent with
-    # how the orchestrator loads it — both use the shared package.
     from shared.aws_clients import get_client
     import json
 
@@ -37,7 +35,7 @@ def _load_config() -> dict:
 def handler(event: dict, context: object) -> dict:
     """Lambda entrypoint for the map state processor.
 
-    Event shape (from Child2 ItemSelector):
+    Event shape (from Data Extractor ItemSelector):
         { "run_id": "RUN-...", "tag_id": "TAG-00001", "endpoint": "https://..." }
     """
     run_id = event["run_id"]
@@ -46,11 +44,6 @@ def handler(event: dict, context: object) -> dict:
 
     run_id_ctx.set(run_id)
     lambda_request_id = getattr(context, "aws_request_id", "unknown")
-
-    logger.info(
-        "Processing tag",
-        extra={"tag_id": tag_id, "lambda_request_id": lambda_request_id},
-    )
 
     config = _load_config()
     table_name = config["pipeline_state_table"]
@@ -63,17 +56,34 @@ def handler(event: dict, context: object) -> dict:
         write_raw_response(raw_bucket, run_id, tag_id, records)
         update_tag_status(table_name, run_id, tag_id, STATUS_SUCCESS, measurement_count)
 
-    except (RetryableError, PermanentError):
+    except (RetryableError, PermanentError) as exc:
         # Update DynamoDB to reflect the failure before letting SF handle retry/catch.
         try:
             update_tag_status(table_name, run_id, tag_id, STATUS_FAILED, 0)
         except Exception:
             logger.warning("Failed to update DynamoDB status to FAILED", extra={"tag_id": tag_id})
+        logger.error(
+            "map_state_processor failed",
+            extra={
+                "lambda_request_id": lambda_request_id,
+                "run_id": run_id,
+                "tag_id": tag_id,
+                "status": "FAILED",
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
         raise
 
     logger.info(
-        "Tag processed",
-        extra={"tag_id": tag_id, "measurement_count": measurement_count},
+        "map_state_processor completed",
+        extra={
+            "lambda_request_id": lambda_request_id,
+            "run_id": run_id,
+            "tag_id": tag_id,
+            "measurement_count": measurement_count,
+            "status": "SUCCESS",
+        },
     )
 
     return {

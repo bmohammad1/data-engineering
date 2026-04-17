@@ -1,8 +1,8 @@
-"""Orchestrator Lambda handler.
+"""Config Loader Lambda handler.
 
-Invoked by Child1 Step Function. Accepts a run_id from the event, loads tags
-from S3, writes run and tag metadata to DynamoDB, produces Map State input JSON,
-and returns the S3 key and concurrency value for the extraction step.
+Invoked by the Config Loader state machine. Accepts a run_id from the event,
+loads tags from S3, writes run and tag metadata to DynamoDB, produces Map State
+input JSON, and returns the S3 key and concurrency value for the extraction step.
 """
 
 import logging
@@ -31,11 +31,11 @@ RETRYABLE_ERROR_CODES = {
 
 
 def handler(event: dict, context: object) -> dict:
-    """Lambda entrypoint for the orchestrator."""
+    """Lambda entrypoint for the config loader."""
     start = time.perf_counter()
     lambda_request_id = getattr(context, "aws_request_id", "unknown")
-
     run_id = event.get("run_id")
+
     if not run_id:
         raise PermanentError(
             "run_id is required in the event payload",
@@ -43,11 +43,7 @@ def handler(event: dict, context: object) -> dict:
         )
 
     run_id_ctx.set(run_id)
-
-    logger.info(
-        "Orchestrator started",
-        extra={"lambda_request_id": lambda_request_id},
-    )
+    environment = os.environ.get("ENVIRONMENT", "dev")
 
     try:
         secret_name = os.environ.get("SECRET_NAME", "")
@@ -55,7 +51,7 @@ def handler(event: dict, context: object) -> dict:
         tags = load_tags_from_s3(config)
 
         table_name = config["pipeline_state_table"]
-        write_run_metadata(table_name, run_id, total_tags=len(tags))
+        write_run_metadata(table_name, run_id, total_tags=len(tags), environment=environment)
 
         endpoint_base = config.get("source_api_base_url", "")
         write_tag_records(table_name, run_id, tags, endpoint_base)
@@ -68,10 +64,32 @@ def handler(event: dict, context: object) -> dict:
             config=config,
         )
 
-    except (RetryableError, PermanentError):
+    except (RetryableError, PermanentError) as exc:
+        logger.error(
+            "config_loader failed",
+            extra={
+                "lambda_request_id": lambda_request_id,
+                "run_id": run_id,
+                "duration_ms": round((time.perf_counter() - start) * 1_000, 2),
+                "status": "FAILED",
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
         raise
     except ClientError as exc:
         error_code = exc.response["Error"]["Code"]
+        logger.error(
+            "config_loader failed",
+            extra={
+                "lambda_request_id": lambda_request_id,
+                "run_id": run_id,
+                "duration_ms": round((time.perf_counter() - start) * 1_000, 2),
+                "status": "FAILED",
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
         if error_code in RETRYABLE_ERROR_CODES:
             raise RetryableError(
                 f"Transient AWS error: {exc}",
@@ -86,11 +104,14 @@ def handler(event: dict, context: object) -> dict:
 
     duration_ms = round((time.perf_counter() - start) * 1_000, 2)
     logger.info(
-        "Orchestrator completed",
+        "config_loader completed",
         extra={
             "lambda_request_id": lambda_request_id,
+            "run_id": run_id,
             "total_tags": len(tags),
+            "map_items_s3_key": map_items_s3_key,
             "duration_ms": duration_ms,
+            "status": "SUCCESS",
         },
     )
 

@@ -14,7 +14,7 @@ from lambdas.map_state_processor.tests.conftest import (
     SAMPLE_API_RESPONSE,
     TABLE_NAME,
 )
-from shared.constants import PK_PIPELINE_RUN, SK_TAG_STATUS_PREFIX
+from shared.constants import PK_RUN_PREFIX, SK_TAG_PREFIX
 from shared.exceptions import RetryableError
 
 RUN_ID = "RUN-HANDLERTEST01"
@@ -59,13 +59,14 @@ class TestHandler:
         item = self.dynamodb.get_item(
             TableName=TABLE_NAME,
             Key={
-                "PK": {"S": f"{PK_PIPELINE_RUN}{RUN_ID}"},
-                "SK": {"S": f"{SK_TAG_STATUS_PREFIX}{TAG_ID}"},
+                "PK": {"S": f"{PK_RUN_PREFIX}{RUN_ID}"},
+                "SK": {"S": f"{SK_TAG_PREFIX}{TAG_ID}"},
             },
         )["Item"]
 
-        assert item["final_status"]["S"] == "SUCCESS"
+        assert item["overall_status"]["S"] == "SUCCESS"
         assert item["records_received"]["N"] == "2"
+        assert item["stage_status"]["M"]["EXTRACT"]["S"] == "SUCCESS"
 
     @responses.activate
     def test_updates_dynamodb_to_failed_on_api_error(self, lambda_context):
@@ -77,12 +78,13 @@ class TestHandler:
         item = self.dynamodb.get_item(
             TableName=TABLE_NAME,
             Key={
-                "PK": {"S": f"{PK_PIPELINE_RUN}{RUN_ID}"},
-                "SK": {"S": f"{SK_TAG_STATUS_PREFIX}{TAG_ID}"},
+                "PK": {"S": f"{PK_RUN_PREFIX}{RUN_ID}"},
+                "SK": {"S": f"{SK_TAG_PREFIX}{TAG_ID}"},
             },
         )["Item"]
 
-        assert item["final_status"]["S"] == "FAILED"
+        assert item["overall_status"]["S"] == "FAILED"
+        assert item["stage_status"]["M"]["EXTRACT"]["S"] == "FAILED"
 
     @responses.activate
     def test_re_raises_exception_after_failure_update(self, lambda_context):

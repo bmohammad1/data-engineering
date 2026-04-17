@@ -1,9 +1,9 @@
 # =============================================================================
-# Lambda Orchestrator Role
+# Lambda Config Loader Role
 # =============================================================================
 
-resource "aws_iam_role" "lambda_orchestrator" {
-  name = "${var.name_prefix}-lambda-orchestrator-role"
+resource "aws_iam_role" "lambda_config_loader" {
+  name = "${var.name_prefix}-lambda-config-loader-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -17,14 +17,14 @@ resource "aws_iam_role" "lambda_orchestrator" {
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "orchestrator_basic" {
-  role       = aws_iam_role.lambda_orchestrator.name
+resource "aws_iam_role_policy_attachment" "config_loader_basic" {
+  role       = aws_iam_role.lambda_config_loader.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "orchestrator_custom" {
-  name   = "${var.name_prefix}-orchestrator-policy"
-  role   = aws_iam_role.lambda_orchestrator.id
+resource "aws_iam_role_policy" "config_loader_custom" {
+  name   = "${var.name_prefix}-config-loader-policy"
+  role   = aws_iam_role.lambda_config_loader.id
   policy = data.aws_iam_policy_document.orchestrator.json
 }
 

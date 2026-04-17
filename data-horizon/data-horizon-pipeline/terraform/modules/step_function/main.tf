@@ -7,7 +7,7 @@ resource "aws_sfn_state_machine" "config_loader" {
   role_arn = var.step_functions_role_arn
 
   definition = templatefile("${var.statemachine_dir}/config_loader.asl.json", {
-    orchestrator_lambda_arn = var.orchestrator_lambda_arn
+    orchestrator_lambda_arn = var.config_loader_lambda_arn
   })
 
   tags = merge(var.tags, {

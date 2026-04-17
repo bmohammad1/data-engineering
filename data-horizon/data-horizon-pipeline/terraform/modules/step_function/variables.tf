@@ -8,8 +8,8 @@ variable "step_functions_role_arn" {
   type        = string
 }
 
-variable "orchestrator_lambda_arn" {
-  description = "Orchestrator Lambda function ARN"
+variable "config_loader_lambda_arn" {
+  description = "Config Loader Lambda function ARN"
   type        = string
 }
 

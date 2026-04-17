@@ -2,8 +2,8 @@
 # Lambda error alarms
 # =============================================================================
 
-resource "aws_cloudwatch_metric_alarm" "orchestrator_errors" {
-  alarm_name          = "${var.name_prefix}-orchestrator-errors"
+resource "aws_cloudwatch_metric_alarm" "config_loader_errors" {
+  alarm_name          = "${var.name_prefix}-config-loader-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "Errors"
@@ -11,12 +11,12 @@ resource "aws_cloudwatch_metric_alarm" "orchestrator_errors" {
   period              = 300
   statistic           = "Sum"
   threshold           = 5
-  alarm_description   = "Orchestrator Lambda error count exceeded threshold"
+  alarm_description   = "Config Loader Lambda error count exceeded threshold"
   alarm_actions       = [var.sns_topic_arn]
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    FunctionName = var.orchestrator_function_name
+    FunctionName = var.config_loader_function_name
   }
 
   tags = var.tags

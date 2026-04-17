@@ -1,6 +1,6 @@
-output "lambda_orchestrator_role_arn" {
-  description = "IAM role ARN for the orchestrator Lambda"
-  value       = aws_iam_role.lambda_orchestrator.arn
+output "lambda_config_loader_role_arn" {
+  description = "IAM role ARN for the config loader Lambda"
+  value       = aws_iam_role.lambda_config_loader.arn
 }
 
 output "lambda_map_processor_role_arn" {

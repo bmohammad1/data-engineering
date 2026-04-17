@@ -49,7 +49,7 @@ def generate_map_state_input(
             run_id=run_id,
         )
 
-    logger.info(
+    logger.debug(
         "Map state input written",
         extra={"run_id": run_id, "s3_key": s3_key, "tag_count": len(tags)},
     )

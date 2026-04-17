@@ -13,8 +13,8 @@ variable "secret_name" {
   type        = string
 }
 
-variable "orchestrator_role_arn" {
-  description = "IAM role ARN for the orchestrator Lambda"
+variable "config_loader_role_arn" {
+  description = "IAM role ARN for the config loader Lambda"
   type        = string
 }
 

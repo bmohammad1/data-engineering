@@ -1,11 +1,11 @@
-"""Update the DynamoDB tag status record after each Lambda invocation."""
+"""Update the DynamoDB tag record after each Lambda invocation."""
 
 import logging
 
 from botocore.exceptions import ClientError
 
 from shared.aws_clients import get_client
-from shared.constants import PK_PIPELINE_RUN, SK_TAG_STATUS_PREFIX
+from shared.constants import PK_RUN_PREFIX, SK_TAG_PREFIX
 from shared.exceptions import DynamoDBError
 
 logger = logging.getLogger(__name__)
@@ -18,15 +18,15 @@ def update_tag_status(
     status: str,
     records_received: int,
 ) -> None:
-    """Update the TAG_STATUS item for this tag with the result of this invocation.
+    """Update the TAG item for this tag with the result of this invocation.
 
-    Sets final_status and records_received; atomically increments attempts by 1.
-    Raises DynamoDBError on any DynamoDB failure.
+    Sets overall_status, records_received, and stage_status.EXTRACT; atomically
+    increments attempts by 1. Raises DynamoDBError on any DynamoDB failure.
     """
     dynamodb = get_client("dynamodb")
 
-    pk = f"{PK_PIPELINE_RUN}{run_id}"
-    sk = f"{SK_TAG_STATUS_PREFIX}{tag_id}"
+    pk = f"{PK_RUN_PREFIX}{run_id}"
+    sk = f"{SK_TAG_PREFIX}{tag_id}"
 
     try:
         dynamodb.update_item(
@@ -36,13 +36,16 @@ def update_tag_status(
                 "SK": {"S": sk},
             },
             UpdateExpression=(
-                "SET final_status = :status, records_received = :count "
+                "SET overall_status = :status, records_received = :count, "
+                "stage_status.#EXTRACT = :extract_status "
                 "ADD attempts :one"
             ),
+            ExpressionAttributeNames={"#EXTRACT": "EXTRACT"},
             ExpressionAttributeValues={
-                ":status": {"S": status},
-                ":count": {"N": str(records_received)},
-                ":one": {"N": "1"},
+                ":status":         {"S": status},
+                ":count":          {"N": str(records_received)},
+                ":extract_status": {"S": status},
+                ":one":            {"N": "1"},
             },
         )
     except ClientError as exc:

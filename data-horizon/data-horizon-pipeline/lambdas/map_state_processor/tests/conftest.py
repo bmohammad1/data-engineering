@@ -8,7 +8,7 @@ import pytest
 from moto import mock_aws
 
 REGION = "us-east-1"
-TABLE_NAME = "test-pipeline-state"
+TABLE_NAME = "PipelineAudit"
 RAW_BUCKET = "test-raw-bucket"
 SECRET_NAME = "test-pipeline-config"
 API_TOKEN = "test-bearer-token-abc123"
@@ -63,7 +63,17 @@ def dynamodb_table(aws):
         AttributeDefinitions=[
             {"AttributeName": "PK", "AttributeType": "S"},
             {"AttributeName": "SK", "AttributeType": "S"},
+            {"AttributeName": "GSI1PK", "AttributeType": "S"},
+            {"AttributeName": "GSI1SK", "AttributeType": "S"},
         ],
+        GlobalSecondaryIndexes=[{
+            "IndexName": "GSI1_RunByPipeline",
+            "KeySchema": [
+                {"AttributeName": "GSI1PK", "KeyType": "HASH"},
+                {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
+            ],
+            "Projection": {"ProjectionType": "ALL"},
+        }],
         BillingMode="PAY_PER_REQUEST",
     )
     return client

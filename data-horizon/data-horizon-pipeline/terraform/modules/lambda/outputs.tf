@@ -1,11 +1,11 @@
-output "orchestrator_function_name" {
-  description = "Orchestrator Lambda function name"
-  value       = aws_lambda_function.orchestrator.function_name
+output "config_loader_function_name" {
+  description = "Config Loader Lambda function name"
+  value       = aws_lambda_function.config_loader.function_name
 }
 
-output "orchestrator_function_arn" {
-  description = "Orchestrator Lambda function ARN"
-  value       = aws_lambda_function.orchestrator.arn
+output "config_loader_function_arn" {
+  description = "Config Loader Lambda function ARN"
+  value       = aws_lambda_function.config_loader.arn
 }
 
 output "map_state_processor_function_name" {

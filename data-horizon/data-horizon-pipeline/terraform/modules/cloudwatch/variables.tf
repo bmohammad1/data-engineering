@@ -9,8 +9,8 @@ variable "retention_days" {
   default     = 30
 }
 
-variable "orchestrator_function_name" {
-  description = "Orchestrator Lambda function name"
+variable "config_loader_function_name" {
+  description = "Config Loader Lambda function name"
   type        = string
 }
 
