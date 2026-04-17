@@ -19,25 +19,29 @@
         {
           "Variable": "$.skipGenerateRunId",
           "BooleanEquals": true,
-          "Next": "UseProvidedRunId"
+          "Next": "PromoteProvidedRunId"
         }
       ],
       "Default": "GenerateRunId"
     },
+    "PromoteProvidedRunId": {
+      "Type": "Pass",
+      "InputPath": "$.manualInputs.run_id",
+      "ResultPath": "$.run_id",
+      "Next": "AttachOptionalInputs"
+    },
     "GenerateRunId": {
       "Type": "Pass",
       "Parameters": {
-        "run_id.$": "States.Format('RUN-{}', States.UUID())",
-        "startFrom.$": "$.startFrom"
+        "run_id.$": "States.Format('RUN-{}', States.UUID())"
       },
-      "Next": "AttachOptionalInputs"
+      "ResultPath": "$.run_id_wrapper",
+      "Next": "SetGeneratedRunId"
     },
-    "UseProvidedRunId": {
+    "SetGeneratedRunId": {
       "Type": "Pass",
-      "Parameters": {
-        "run_id.$": "$.run_id",
-        "startFrom.$": "$.startFrom"
-      },
+      "InputPath": "$.run_id_wrapper.run_id",
+      "ResultPath": "$.run_id",
       "Next": "AttachOptionalInputs"
     },
     "AttachOptionalInputs": {
@@ -109,8 +113,14 @@
     },
     "PrepareExtractorInputManual": {
       "Type": "Pass",
+      "InputPath": "$.run_id",
+      "ResultPath": "$.manualInputs.run_id",
+      "Next": "SetExtractorInput"
+    },
+    "SetExtractorInput": {
+      "Type": "Pass",
       "Parameters": {
-        "extractor_input.$": "$.manualInputs.data_extractor"
+        "extractor_input.$": "$.manualInputs"
       },
       "ResultPath": "$.prepared",
       "Next": "RunDataExtractor"
@@ -146,8 +156,14 @@
     },
     "PrepareTransformationInputManual": {
       "Type": "Pass",
+      "InputPath": "$.run_id",
+      "ResultPath": "$.manualInputs.run_id",
+      "Next": "SetTransformationInput"
+    },
+    "SetTransformationInput": {
+      "Type": "Pass",
       "Parameters": {
-        "transformation_input.$": "$.manualInputs.transformation"
+        "transformation_input.$": "$.manualInputs"
       },
       "ResultPath": "$.prepared",
       "Next": "RunTransformation"
