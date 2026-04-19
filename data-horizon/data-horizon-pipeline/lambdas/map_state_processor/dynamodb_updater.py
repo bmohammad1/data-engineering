@@ -35,9 +35,8 @@ def update_tag_status(
             },
             UpdateExpression=(
                 "SET overall_status = :status, records_received = :count, "
-                "stage_status.#EXTRACT = :extract_status, "
-                "extraction_duration_ms = :duration_ms "
-                "ADD attempts :one"
+                "stage_status.#EXTRACT = :extract_status "
+                "ADD attempts :one, extraction_duration_ms :duration_ms"
             ),
             ExpressionAttributeNames={"#EXTRACT": "EXTRACT"},
             ExpressionAttributeValues={

@@ -45,6 +45,22 @@ class TestUpdateTagStatus:
 
         assert item["attempts"]["N"] == "2"
 
+    def test_accumulates_extraction_duration_ms_across_calls(self, dynamodb_table, seed_tag_item):
+        seed_tag_item(RUN_ID, TAG_ID)
+        update_tag_status(TABLE_NAME, RUN_ID, TAG_ID, "FAILED", 0, extraction_duration_ms=300)
+        update_tag_status(TABLE_NAME, RUN_ID, TAG_ID, "SUCCESS", 5, extraction_duration_ms=450)
+
+        item = dynamodb_table.get_item(
+            TableName=TABLE_NAME,
+            Key={
+                "PK": {"S": f"{PK_RUN_PREFIX}{RUN_ID}"},
+                "SK": {"S": f"{SK_TAG_PREFIX}{TAG_ID}"},
+            },
+        )["Item"]
+
+        assert item["extraction_duration_ms"]["N"] == "750"
+        assert item["attempts"]["N"] == "2"
+
     def test_raises_dynamodb_error_on_missing_table(self, aws):
         with pytest.raises(DynamoDBError):
             update_tag_status("nonexistent-table", RUN_ID, TAG_ID, "SUCCESS", 0)

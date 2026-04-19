@@ -130,7 +130,15 @@ module "lambda" {
   map_processor_role_arn = module.iam.lambda_map_processor_role_arn
   memory_size            = var.lambda_memory_size
   timeout                = var.lambda_timeout
-  tags                   = local.common_tags
+
+  pipeline_state_table      = module.dynamodb.table_name
+  raw_bucket_name           = module.s3.raw_bucket_name
+  config_bucket_name        = module.s3.config_bucket_name
+  orchestration_bucket_name = module.s3.orchestration_bucket_name
+  source_api_base_url       = var.source_api_base_url
+  map_state_concurrency     = var.map_state_concurrency
+
+  tags = local.common_tags
 }
 
 # --- Glue jobs ---

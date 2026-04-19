@@ -19,9 +19,7 @@ class TestLoadPipelineConfig:
     def test_returns_config_dict(self, secret):
         config = load_pipeline_config(SECRET_NAME)
 
-        assert config["config_bucket_name"] == TEST_CONFIG["config_bucket_name"]
-        assert config["pipeline_state_table"] == TEST_CONFIG["pipeline_state_table"]
-        assert config["source_api_base_url"] == TEST_CONFIG["source_api_base_url"]
+        assert config["source_api_token"] == TEST_CONFIG["source_api_token"]
 
     def test_raises_config_load_error_when_secret_missing(self, aws):
         with pytest.raises(ConfigLoadError):

@@ -23,14 +23,19 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config() -> dict:
-    """Load pipeline config from Secrets Manager."""
-    from shared.aws_clients import get_client
+    """Load config: API token from Secrets Manager, non-secrets from env vars."""
     import json
+    from shared.aws_clients import get_client
 
-    secret_name = os.environ.get("SECRET_NAME", "")
     sm = get_client("secretsmanager")
-    response = sm.get_secret_value(SecretId=secret_name)
-    return json.loads(response["SecretString"])
+    secret = json.loads(
+        sm.get_secret_value(SecretId=os.environ["SECRET_NAME"])["SecretString"]
+    )
+    return {
+        "source_api_token":     secret["source_api_token"],
+        "pipeline_state_table": os.environ["PIPELINE_STATE_TABLE"],
+        "raw_bucket_name":      os.environ["RAW_BUCKET_NAME"],
+    }
 
 
 def handler(event: dict, context: object) -> dict:

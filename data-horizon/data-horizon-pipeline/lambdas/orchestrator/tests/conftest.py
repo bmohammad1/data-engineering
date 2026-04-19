@@ -16,12 +16,13 @@ ORCHESTRATION_BUCKET = "test-orchestration-bucket"
 SECRET_NAME = "test-pipeline-config"
 API_BASE_URL = "https://mock-api.example.com/dev"
 
+# Only actual secrets stay in the Secrets Manager mock.
+# Non-secret config is read from env vars by the Lambda handler.
+# config_bucket_name is kept here so load_tags_from_s3 unit tests
+# can pass TEST_CONFIG directly without going through the handler.
 TEST_CONFIG = {
+    "source_api_token":  "test-bearer-token-abc123",
     "config_bucket_name": CONFIG_BUCKET,
-    "orchestration_bucket_name": ORCHESTRATION_BUCKET,
-    "pipeline_state_table": TABLE_NAME,
-    "source_api_base_url": API_BASE_URL,
-    "map_state_concurrency": 5,
 }
 
 
@@ -32,6 +33,11 @@ def mock_env(monkeypatch):
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("SECRET_NAME", SECRET_NAME)
     monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("PIPELINE_STATE_TABLE", TABLE_NAME)
+    monkeypatch.setenv("CONFIG_BUCKET_NAME", CONFIG_BUCKET)
+    monkeypatch.setenv("ORCHESTRATION_BUCKET_NAME", ORCHESTRATION_BUCKET)
+    monkeypatch.setenv("SOURCE_API_BASE_URL", API_BASE_URL)
+    monkeypatch.setenv("MAP_STATE_CONCURRENCY", "5")
 
 
 @pytest.fixture()

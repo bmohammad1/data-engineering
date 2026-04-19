@@ -1,12 +1,8 @@
 """Call the source API for a single tag and return the parsed response."""
 
-import logging
-
 import requests
 
 from shared.exceptions import PermanentError, RetryableError
-
-logger = logging.getLogger(__name__)
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 REQUEST_TIMEOUT_SECONDS = 30
@@ -36,7 +32,7 @@ def fetch_tag_data(endpoint: str, token: str) -> dict:
 
     if response.status_code in RETRYABLE_STATUS_CODES:
         raise RetryableError(
-            f"Transient HTTP {response.status_code} from {endpoint}",
+            f"Transient HTTP {response.status_code} from {endpoint}: {response.text[:200]}",
             service="source_api",
         )
 
@@ -46,5 +42,4 @@ def fetch_tag_data(endpoint: str, token: str) -> dict:
             service="source_api",
         )
 
-    logger.debug("API call succeeded", extra={"endpoint": endpoint, "status": response.status_code})
     return response.json()

@@ -84,6 +84,12 @@ def configure_logging(log_level: str | None = None) -> None:
             },
         },
         "root": {"level": level, "handlers": ["console"]},
+        "loggers": {
+            "botocore.credentials": {
+                "level": "WARNING",
+                "propagate": True,
+            },
+        },
     }
 
     logging.config.dictConfig(config)

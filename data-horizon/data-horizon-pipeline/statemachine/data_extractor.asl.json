@@ -41,7 +41,8 @@
                 "ErrorEquals": [
                   "Lambda.ServiceException",
                   "Lambda.AWSLambdaException",
-                  "Lambda.SdkClientException"
+                  "Lambda.SdkClientException",
+                  "RetryableError"
                 ],
                 "IntervalSeconds": 2,
                 "MaxAttempts": 3,

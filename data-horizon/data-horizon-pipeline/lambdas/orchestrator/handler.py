@@ -48,15 +48,22 @@ def handler(event: dict, context: object) -> dict:
     try:
         secret_name = os.environ.get("SECRET_NAME", "")
         config = load_pipeline_config(secret_name)
+
+        # Non-secret config comes from env vars; inject into config so helpers
+        # (load_tags_from_s3, generate_map_state_input) can still read from it.
+        config["config_bucket_name"]    = os.environ["CONFIG_BUCKET_NAME"]
+        config["source_api_base_url"]   = os.environ.get("SOURCE_API_BASE_URL", "")
+
         tags = load_tags_from_s3(config)
 
-        table_name = config["pipeline_state_table"]
+        table_name           = os.environ["PIPELINE_STATE_TABLE"]
+        orchestration_bucket = os.environ["ORCHESTRATION_BUCKET_NAME"]
+
         write_run_metadata(table_name, run_id, total_tags=len(tags), environment=environment)
 
-        endpoint_base = config.get("source_api_base_url", "")
+        endpoint_base = config["source_api_base_url"]
         write_tag_records(table_name, run_id, tags, endpoint_base)
 
-        orchestration_bucket = config["orchestration_bucket_name"]
         map_items_s3_key = generate_map_state_input(
             bucket=orchestration_bucket,
             run_id=run_id,
@@ -118,5 +125,5 @@ def handler(event: dict, context: object) -> dict:
     return {
         "run_id": run_id,
         "map_items_s3_key": map_items_s3_key,
-        "concurrency": config.get("map_state_concurrency", 5),
+        "concurrency": int(os.environ.get("MAP_STATE_CONCURRENCY", "5")),
     }

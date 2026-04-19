@@ -14,11 +14,10 @@ SECRET_NAME = "test-pipeline-config"
 API_TOKEN = "test-bearer-token-abc123"
 API_BASE_URL = "https://mock-api.example.com/dev"
 
+# Only actual secrets stay in the Secrets Manager mock.
+# Non-secret config (table name, bucket) is read from env vars by the Lambda handler.
 TEST_CONFIG = {
-    "raw_bucket_name": RAW_BUCKET,
-    "pipeline_state_table": TABLE_NAME,
     "source_api_token": API_TOKEN,
-    "source_api_base_url": API_BASE_URL,
 }
 
 SAMPLE_API_RESPONSE = {
@@ -40,6 +39,8 @@ def mock_env(monkeypatch):
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("SECRET_NAME", SECRET_NAME)
     monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("PIPELINE_STATE_TABLE", TABLE_NAME)
+    monkeypatch.setenv("RAW_BUCKET_NAME", RAW_BUCKET)
 
 
 @pytest.fixture()

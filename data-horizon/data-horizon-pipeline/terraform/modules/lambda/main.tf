@@ -20,8 +20,13 @@ resource "aws_lambda_function" "config_loader" {
 
   environment {
     variables = {
-      SECRET_NAME = var.secret_name
-      ENVIRONMENT = var.environment
+      SECRET_NAME               = var.secret_name
+      ENVIRONMENT               = var.environment
+      PIPELINE_STATE_TABLE      = var.pipeline_state_table
+      CONFIG_BUCKET_NAME        = var.config_bucket_name
+      ORCHESTRATION_BUCKET_NAME = var.orchestration_bucket_name
+      SOURCE_API_BASE_URL       = var.source_api_base_url
+      MAP_STATE_CONCURRENCY     = tostring(var.map_state_concurrency)
     }
   }
 
@@ -54,8 +59,10 @@ resource "aws_lambda_function" "map_state_processor" {
 
   environment {
     variables = {
-      SECRET_NAME = var.secret_name
-      ENVIRONMENT = var.environment
+      SECRET_NAME          = var.secret_name
+      ENVIRONMENT          = var.environment
+      PIPELINE_STATE_TABLE = var.pipeline_state_table
+      RAW_BUCKET_NAME      = var.raw_bucket_name
     }
   }
 
