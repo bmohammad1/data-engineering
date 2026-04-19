@@ -1,14 +1,10 @@
 """Update the DynamoDB tag record after each Lambda invocation."""
 
-import logging
-
 from botocore.exceptions import ClientError
 
 from shared.aws_clients import get_client
 from shared.constants import PK_RUN_PREFIX, SK_TAG_PREFIX
 from shared.exceptions import DynamoDBError
-
-logger = logging.getLogger(__name__)
 
 
 def update_tag_status(
@@ -17,11 +13,13 @@ def update_tag_status(
     tag_id: str,
     status: str,
     records_received: int,
+    extraction_duration_ms: int = 0,
 ) -> None:
     """Update the TAG item for this tag with the result of this invocation.
 
-    Sets overall_status, records_received, and stage_status.EXTRACT; atomically
-    increments attempts by 1. Raises DynamoDBError on any DynamoDB failure.
+    Sets overall_status, records_received, extraction_duration_ms, and
+    stage_status.EXTRACT; atomically increments attempts by 1. Raises
+    DynamoDBError on any DynamoDB failure.
     """
     dynamodb = get_client("dynamodb")
 
@@ -37,7 +35,8 @@ def update_tag_status(
             },
             UpdateExpression=(
                 "SET overall_status = :status, records_received = :count, "
-                "stage_status.#EXTRACT = :extract_status "
+                "stage_status.#EXTRACT = :extract_status, "
+                "extraction_duration_ms = :duration_ms "
                 "ADD attempts :one"
             ),
             ExpressionAttributeNames={"#EXTRACT": "EXTRACT"},
@@ -45,6 +44,7 @@ def update_tag_status(
                 ":status":         {"S": status},
                 ":count":          {"N": str(records_received)},
                 ":extract_status": {"S": status},
+                ":duration_ms":    {"N": str(extraction_duration_ms)},
                 ":one":            {"N": "1"},
             },
         )
@@ -55,7 +55,3 @@ def update_tag_status(
             run_id=run_id,
         ) from exc
 
-    logger.debug(
-        "Tag status updated",
-        extra={"tag_id": tag_id, "status": status, "records_received": records_received},
-    )

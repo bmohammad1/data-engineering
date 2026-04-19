@@ -24,8 +24,9 @@ ENDPOINT = f"{API_BASE_URL}/tag/{TAG_ID}"
 
 class TestHandler:
     @pytest.fixture(autouse=True)
-    def setup_all(self, dynamodb_table, s3_buckets, secret):
+    def setup_all(self, dynamodb_table, s3_buckets, secret, seed_tag_item):
         self.dynamodb = dynamodb_table
+        seed_tag_item(RUN_ID, TAG_ID)
 
     @responses.activate
     def test_happy_path_return_shape(self, lambda_context):
@@ -35,7 +36,7 @@ class TestHandler:
 
         assert result["tag_id"] == TAG_ID
         assert result["status"] == "SUCCESS"
-        assert result["records_written"] == 2  # 2 measurements in SAMPLE_API_RESPONSE
+        assert result["records_written"] == 2  # 2 measurements + 0 alarms in SAMPLE_API_RESPONSE
 
     @responses.activate
     def test_writes_raw_response_to_s3(self, lambda_context):

@@ -102,3 +102,29 @@ def lambda_context():
     ctx.aws_request_id = "test-map-request-id-456"
     ctx.get_remaining_time_in_millis.return_value = 60000
     return ctx
+
+
+@pytest.fixture()
+def seed_tag_item(dynamodb_table):
+    """Seed a PENDING TAG item so update_tag_status has a pre-existing item with stage_status."""
+    from shared.constants import PK_RUN_PREFIX, SK_TAG_PREFIX
+
+    def _seed(run_id: str, tag_id: str) -> None:
+        dynamodb_table.put_item(
+            TableName=TABLE_NAME,
+            Item={
+                "PK":             {"S": f"{PK_RUN_PREFIX}{run_id}"},
+                "SK":             {"S": f"{SK_TAG_PREFIX}{tag_id}"},
+                "run_id":         {"S": run_id},
+                "tag_key":        {"S": tag_id},
+                "overall_status": {"S": "PENDING"},
+                "stage_status":   {"M": {
+                    "EXTRACT":   {"S": "PENDING"},
+                    "TRANSFORM": {"S": "PENDING"},
+                    "VALIDATE":  {"S": "PENDING"},
+                }},
+                "attempts":       {"N": "0"},
+            },
+        )
+
+    return _seed

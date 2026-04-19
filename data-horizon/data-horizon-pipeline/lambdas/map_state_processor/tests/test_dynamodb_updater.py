@@ -13,8 +13,9 @@ TAG_ID = "TAG-00001"
 
 
 class TestUpdateTagStatus:
-    def test_updates_overall_status_and_records_received(self, dynamodb_table):
-        update_tag_status(TABLE_NAME, RUN_ID, TAG_ID, "SUCCESS", 42)
+    def test_updates_overall_status_and_records_received(self, dynamodb_table, seed_tag_item):
+        seed_tag_item(RUN_ID, TAG_ID)
+        update_tag_status(TABLE_NAME, RUN_ID, TAG_ID, "SUCCESS", 42, extraction_duration_ms=500)
 
         item = dynamodb_table.get_item(
             TableName=TABLE_NAME,
@@ -27,8 +28,10 @@ class TestUpdateTagStatus:
         assert item["overall_status"]["S"] == "SUCCESS"
         assert item["records_received"]["N"] == "42"
         assert item["stage_status"]["M"]["EXTRACT"]["S"] == "SUCCESS"
+        assert item["extraction_duration_ms"]["N"] == "500"
 
-    def test_increments_attempts_on_each_call(self, dynamodb_table):
+    def test_increments_attempts_on_each_call(self, dynamodb_table, seed_tag_item):
+        seed_tag_item(RUN_ID, TAG_ID)
         update_tag_status(TABLE_NAME, RUN_ID, TAG_ID, "SUCCESS", 5)
         update_tag_status(TABLE_NAME, RUN_ID, TAG_ID, "SUCCESS", 5)
 

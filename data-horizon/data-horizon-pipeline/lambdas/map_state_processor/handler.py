@@ -7,6 +7,7 @@ Manager, writes the raw response to S3, and updates the DynamoDB tag record.
 
 import logging
 import os
+import time
 
 from shared.constants import STATUS_FAILED, STATUS_SUCCESS
 from shared.exceptions import PermanentError, RetryableError
@@ -50,25 +51,33 @@ def handler(event: dict, context: object) -> dict:
     raw_bucket = config["raw_bucket_name"]
     token = config["source_api_token"]
 
+    start = time.perf_counter()
     try:
         api_response = fetch_tag_data(endpoint, token)
-        records, measurement_count = extract_records(api_response)
+        records, total_records = extract_records(api_response)
         write_raw_response(raw_bucket, run_id, tag_id, records)
-        update_tag_status(table_name, run_id, tag_id, STATUS_SUCCESS, measurement_count)
+        duration_ms = round((time.perf_counter() - start) * 1_000, 2)
+        update_tag_status(
+            table_name, run_id, tag_id, STATUS_SUCCESS, total_records, int(duration_ms)
+        )
 
     except (RetryableError, PermanentError) as exc:
-        # Update DynamoDB to reflect the failure before letting SF handle retry/catch.
+        duration_ms = round((time.perf_counter() - start) * 1_000, 2)
         try:
-            update_tag_status(table_name, run_id, tag_id, STATUS_FAILED, 0)
+            update_tag_status(
+                table_name, run_id, tag_id, STATUS_FAILED, 0, int(duration_ms)
+            )
         except Exception:
-            logger.warning("Failed to update DynamoDB status to FAILED", extra={"tag_id": tag_id})
+            pass
         logger.error(
             "map_state_processor failed",
             extra={
                 "lambda_request_id": lambda_request_id,
                 "run_id": run_id,
                 "tag_id": tag_id,
-                "status": "FAILED",
+                "endpoint": endpoint,
+                "duration_ms": duration_ms,
+                "status": STATUS_FAILED,
                 "error": str(exc),
             },
             exc_info=True,
@@ -81,13 +90,15 @@ def handler(event: dict, context: object) -> dict:
             "lambda_request_id": lambda_request_id,
             "run_id": run_id,
             "tag_id": tag_id,
-            "measurement_count": measurement_count,
-            "status": "SUCCESS",
+            "endpoint": endpoint,
+            "total_records": total_records,
+            "duration_ms": duration_ms,
+            "status": STATUS_SUCCESS,
         },
     )
 
     return {
         "tag_id": tag_id,
         "status": STATUS_SUCCESS,
-        "records_written": measurement_count,
+        "records_written": total_records,
     }
