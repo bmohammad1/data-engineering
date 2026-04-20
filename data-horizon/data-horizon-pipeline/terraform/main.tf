@@ -62,36 +62,13 @@ module "redshift" {
   tags                  = local.common_tags
 }
 
-# --- Secrets Manager (runtime config) ---
+# --- Secrets Manager (API token only) ---
 module "secrets_manager" {
   source = "./modules/secrets_manager"
 
-  name_prefix              = local.name_prefix
-  raw_bucket_name           = module.s3.raw_bucket_name
-  cleaned_bucket_name       = module.s3.cleaned_bucket_name
-  validated_bucket_name     = module.s3.validated_bucket_name
-  bad_bucket_name           = module.s3.bad_bucket_name
-  scripts_bucket_name       = module.s3.scripts_bucket_name
-  orchestration_bucket_name = module.s3.orchestration_bucket_name
-  config_bucket_name        = module.s3.config_bucket_name
-
-  dynamodb_table_name = module.dynamodb.table_name
-
-  source_api_base_url = var.source_api_base_url
-  source_api_token    = var.source_api_token
-
-  redshift_host     = module.redshift.cluster_host
-  redshift_database = module.redshift.database_name
-
-  eventbridge_failures_queue_url = module.sqs.eventbridge_failures_queue_url
-  extraction_failures_queue_url  = module.sqs.extraction_failures_queue_url
-
-  sns_topic_arn = module.sns.topic_arn
-
-  map_state_concurrency = var.map_state_concurrency
-  glue_dpu_count        = var.glue_dpu_count
-
-  tags = local.common_tags
+  name_prefix      = local.name_prefix
+  source_api_token = var.source_api_token
+  tags             = local.common_tags
 }
 
 # --- IAM (roles + policies) ---
@@ -136,7 +113,7 @@ module "lambda" {
   config_bucket_name        = module.s3.config_bucket_name
   orchestration_bucket_name = module.s3.orchestration_bucket_name
   source_api_base_url       = var.source_api_base_url
-  map_state_concurrency     = var.map_state_concurrency
+  map_state_concurrency = var.map_state_concurrency
 
   tags = local.common_tags
 }

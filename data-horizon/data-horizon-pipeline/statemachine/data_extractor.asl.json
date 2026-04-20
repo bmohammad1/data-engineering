@@ -42,6 +42,7 @@
                   "Lambda.ServiceException",
                   "Lambda.AWSLambdaException",
                   "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
                   "RetryableError"
                 ],
                 "IntervalSeconds": 2,

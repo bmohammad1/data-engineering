@@ -70,8 +70,6 @@ resource "aws_lambda_function" "this" {
   memory_size      = var.lambda_memory_size
   timeout          = var.lambda_timeout
   architectures    = ["x86_64"]
-
-
 }
 
 # =============================================================================

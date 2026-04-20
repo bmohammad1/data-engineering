@@ -16,12 +16,12 @@ TAGS_CSV_KEY = "source_config/tags.csv"
 
 
 def load_pipeline_config(secret_name: str) -> dict:
-    """Fetch pipeline configuration from Secrets Manager."""
+    """Fetch the API token from Secrets Manager."""
     sm = get_client("secretsmanager")
 
     try:
         response = sm.get_secret_value(SecretId=secret_name)
-        config = json.loads(response["SecretString"])
+        secret = json.loads(response["SecretString"])
     except ClientError as exc:
         raise ConfigLoadError(
             f"Failed to load secret '{secret_name}': {exc}",
@@ -34,7 +34,7 @@ def load_pipeline_config(secret_name: str) -> dict:
         )
 
     logger.debug("Pipeline config loaded", extra={"secret_name": secret_name})
-    return config
+    return {"source_api_token": secret["source_api_token"]}
 
 
 def load_tags_from_s3(config: dict) -> list[str]:
