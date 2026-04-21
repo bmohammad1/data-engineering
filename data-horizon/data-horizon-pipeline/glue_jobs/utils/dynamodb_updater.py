@@ -7,6 +7,9 @@ with ExpressionAttributeNames to safely target the nested stage_status map.
 Two levels are updated after each Glue job:
   - Per-tag: stage_status.TRANSFORM / stage_status.VALIDATE on the TAG item
   - Per-run: transform_status / validate_status + aggregate counts on the META item
+
+Failure reasons are captured in structured logs (logger.error), not in DynamoDB.
+Per-tag items carry record counts so operators can track data volume per tag.
 """
 
 import logging
@@ -21,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Per-tag updates
+# Per-tag TRANSFORM updates
 # ---------------------------------------------------------------------------
 
 
@@ -30,18 +33,74 @@ def update_tag_transform_status(
     run_id: str,
     tag_id: str,
     status: str,
+    records_extracted: int = 0,
+    records_dropped: int = 0,
+    records_transformed: int = 0,
     duration_ms: int = 0,
 ) -> None:
-    """Set stage_status.TRANSFORM and overall_status on a TAG item."""
-    _update_tag_stage(
-        table_name=table_name,
-        run_id=run_id,
-        tag_id=tag_id,
-        stage_key="TRANSFORM",
-        status=status,
-        extra_attrs={":duration_ms": {"N": str(duration_ms)}},
-        extra_expression=" ADD transform_duration_ms :duration_ms",
+    """Set stage_status.TRANSFORM on a TAG item with full record counts.
+
+    Args:
+        records_extracted:   Total records read from raw JSON across all tables.
+        records_dropped:     Records silently dropped (null PK / null TagID after cast).
+        records_transformed: Records successfully written to cleaned bucket.
+    """
+    dynamodb = get_client("dynamodb")
+    pk = f"{PK_RUN_PREFIX}{run_id}"
+    sk = f"{SK_TAG_PREFIX}{tag_id}"
+
+    set_clause = (
+        "SET overall_status = :status"
+        ", stage_status.#TRANSFORM = :stage_status"
+        ", transform_records_extracted = :extracted"
+        ", transform_records_dropped = :dropped"
+        ", transform_records_written = :written"
     )
+    expression_values = {
+        ":status":        {"S": status},
+        ":stage_status":  {"S": status},
+        ":extracted":     {"N": str(records_extracted)},
+        ":dropped":       {"N": str(records_dropped)},
+        ":written":       {"N": str(records_transformed)},
+    }
+
+    if duration_ms:
+        expression_values[":dur_ms"] = {"N": str(duration_ms)}
+        update_expr = set_clause + " ADD transform_duration_ms :dur_ms"
+    else:
+        update_expr = set_clause
+
+    try:
+        dynamodb.update_item(
+            TableName=table_name,
+            Key={"PK": {"S": pk}, "SK": {"S": sk}},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames={"#TRANSFORM": "TRANSFORM"},
+            ExpressionAttributeValues=expression_values,
+        )
+    except ClientError as exc:
+        raise DynamoDBError(
+            f"Failed to update TRANSFORM status for tag {tag_id} in run {run_id}: {exc}",
+            service="dynamodb",
+            run_id=run_id,
+        ) from exc
+
+    logger.debug(
+        "Tag TRANSFORM status updated",
+        extra={
+            "run_id": run_id,
+            "tag_id": tag_id,
+            "status": status,
+            "records_extracted": records_extracted,
+            "records_dropped": records_dropped,
+            "records_transformed": records_transformed,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-tag VALIDATE updates
+# ---------------------------------------------------------------------------
 
 
 def update_tag_validate_status(
@@ -53,67 +112,59 @@ def update_tag_validate_status(
     invalid_count: int = 0,
     duration_ms: int = 0,
 ) -> None:
-    """Set stage_status.VALIDATE on a TAG item with per-tag record counts."""
-    _update_tag_stage(
-        table_name=table_name,
-        run_id=run_id,
-        tag_id=tag_id,
-        stage_key="VALIDATE",
-        status=status,
-        extra_attrs={
-            ":valid":   {"N": str(valid_count)},
-            ":invalid": {"N": str(invalid_count)},
-            ":dur_ms":  {"N": str(duration_ms)},
-        },
-        extra_expression=(
-            " SET records_validated = :valid, records_rejected = :invalid"
-            " ADD validate_duration_ms :dur_ms"
-        ),
-    )
+    """Set stage_status.VALIDATE on a TAG item with full record counts.
 
-
-def _update_tag_stage(
-    table_name: str,
-    run_id: str,
-    tag_id: str,
-    stage_key: str,
-    status: str,
-    extra_attrs: dict,
-    extra_expression: str,
-) -> None:
-    """Internal helper — set stage_status.<stage_key> and overall_status."""
+    Args:
+        valid_count:   Records that passed all validation rules → written to validated bucket.
+        invalid_count: Records that failed at least one rule → quarantined.
+    """
     dynamodb = get_client("dynamodb")
-
     pk = f"{PK_RUN_PREFIX}{run_id}"
     sk = f"{SK_TAG_PREFIX}{tag_id}"
 
+    set_clause = (
+        "SET overall_status = :status"
+        ", stage_status.#VALIDATE = :stage_status"
+        ", validate_records_passed = :valid"
+        ", validate_records_quarantined = :invalid"
+    )
     expression_values = {
         ":status":       {"S": status},
         ":stage_status": {"S": status},
+        ":valid":        {"N": str(valid_count)},
+        ":invalid":      {"N": str(invalid_count)},
     }
-    expression_values.update(extra_attrs)
+
+    if duration_ms:
+        expression_values[":dur_ms"] = {"N": str(duration_ms)}
+        update_expr = set_clause + " ADD validate_duration_ms :dur_ms"
+    else:
+        update_expr = set_clause
 
     try:
         dynamodb.update_item(
             TableName=table_name,
             Key={"PK": {"S": pk}, "SK": {"S": sk}},
-            UpdateExpression=(
-                f"SET overall_status = :status, stage_status.#{stage_key} = :stage_status"
-                + extra_expression
-            ),
-            ExpressionAttributeNames={f"#{stage_key}": stage_key},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames={"#VALIDATE": "VALIDATE"},
             ExpressionAttributeValues=expression_values,
         )
     except ClientError as exc:
         raise DynamoDBError(
-            f"Failed to update {stage_key} status for tag {tag_id} in run {run_id}: {exc}",
+            f"Failed to update VALIDATE status for tag {tag_id} in run {run_id}: {exc}",
             service="dynamodb",
             run_id=run_id,
         ) from exc
 
     logger.debug(
-        "Tag stage status updated",
-        extra={"run_id": run_id, "tag_id": tag_id, "stage": stage_key, "status": status},
+        "Tag VALIDATE status updated",
+        extra={
+            "run_id": run_id,
+            "tag_id": tag_id,
+            "status": status,
+            "valid_count": valid_count,
+            "invalid_count": invalid_count,
+        },
     )
 
 
@@ -126,20 +177,53 @@ def update_run_transform_status(
     table_name: str,
     run_id: str,
     status: str,
+    transform_tags_success: int = 0,
+    transform_tags_failed: int = 0,
     records_transformed: int = 0,
-    records_failed: int = 0,
+    records_dropped: int = 0,
 ) -> None:
-    """Update the RUN META item with transform stage outcome."""
-    _update_run_meta(
-        table_name=table_name,
-        run_id=run_id,
-        stage_field="transform_status",
-        status=status,
-        extra_attrs={
-            ":transformed": {"N": str(records_transformed)},
-            ":failed":      {"N": str(records_failed)},
+    """Update the RUN META item with transform stage aggregate outcomes."""
+    dynamodb = get_client("dynamodb")
+    pk = f"{PK_RUN_PREFIX}{run_id}"
+
+    overall_update = "" if status == STATUS_RUNNING else ", overall_status = :status"
+
+    try:
+        dynamodb.update_item(
+            TableName=table_name,
+            Key={"PK": {"S": pk}, "SK": {"S": SK_META}},
+            UpdateExpression=(
+                f"SET transform_status = :status{overall_update}"
+                ", transform_tags_success = :tags_ok"
+                ", transform_tags_failed = :tags_fail"
+                ", transform_records_written = :written"
+                ", transform_records_dropped = :dropped"
+            ),
+            ExpressionAttributeValues={
+                ":status":    {"S": status},
+                ":tags_ok":   {"N": str(transform_tags_success)},
+                ":tags_fail": {"N": str(transform_tags_failed)},
+                ":written":   {"N": str(records_transformed)},
+                ":dropped":   {"N": str(records_dropped)},
+            },
+        )
+    except ClientError as exc:
+        raise DynamoDBError(
+            f"Failed to update run META transform status for {run_id}: {exc}",
+            service="dynamodb",
+            run_id=run_id,
+        ) from exc
+
+    logger.debug(
+        "Run META TRANSFORM updated",
+        extra={
+            "run_id": run_id,
+            "status": status,
+            "transform_tags_success": transform_tags_success,
+            "transform_tags_failed": transform_tags_failed,
+            "records_transformed": records_transformed,
+            "records_dropped": records_dropped,
         },
-        extra_expression=" SET records_transformed = :transformed, transform_failed = :failed",
     )
 
 
@@ -147,63 +231,51 @@ def update_run_validate_status(
     table_name: str,
     run_id: str,
     status: str,
+    validate_tags_success: int = 0,
+    validate_tags_failed: int = 0,
     records_validated: int = 0,
     records_rejected: int = 0,
 ) -> None:
-    """Update the RUN META item with validation stage outcome."""
-    _update_run_meta(
-        table_name=table_name,
-        run_id=run_id,
-        stage_field="validate_status",
-        status=status,
-        extra_attrs={
-            ":validated": {"N": str(records_validated)},
-            ":rejected":  {"N": str(records_rejected)},
-        },
-        extra_expression=" SET records_validated = :validated, records_rejected = :rejected",
-    )
-
-
-def _update_run_meta(
-    table_name: str,
-    run_id: str,
-    stage_field: str,
-    status: str,
-    extra_attrs: dict,
-    extra_expression: str,
-) -> None:
-    """Internal helper — update the META item for a run."""
+    """Update the RUN META item with validation stage aggregate outcomes."""
     dynamodb = get_client("dynamodb")
-
     pk = f"{PK_RUN_PREFIX}{run_id}"
 
-    expression_values = {":status": {"S": status}}
-    expression_values.update(extra_attrs)
-
-    # Glue job keeps overall_status as RUNNING until Child4 (Redshift Load) completes.
-    # Only set it to FAILED here if the stage itself failed — success is set by the orchestrator.
-    overall_update = ""
-    if status != STATUS_RUNNING:
-        overall_update = ", overall_status = :status"
+    overall_update = "" if status == STATUS_RUNNING else ", overall_status = :status"
 
     try:
         dynamodb.update_item(
             TableName=table_name,
             Key={"PK": {"S": pk}, "SK": {"S": SK_META}},
             UpdateExpression=(
-                f"SET {stage_field} = :status{overall_update}"
-                + extra_expression
+                f"SET validate_status = :status{overall_update}"
+                ", validate_tags_success = :tags_ok"
+                ", validate_tags_failed = :tags_fail"
+                ", validate_records_passed = :validated"
+                ", validate_records_quarantined = :rejected"
             ),
-            ExpressionAttributeValues=expression_values,
+            ExpressionAttributeValues={
+                ":status":    {"S": status},
+                ":tags_ok":   {"N": str(validate_tags_success)},
+                ":tags_fail": {"N": str(validate_tags_failed)},
+                ":validated": {"N": str(records_validated)},
+                ":rejected":  {"N": str(records_rejected)},
+            },
         )
     except ClientError as exc:
         raise DynamoDBError(
-            f"Failed to update run meta for {run_id}: {exc}",
+            f"Failed to update run META validate status for {run_id}: {exc}",
             service="dynamodb",
             run_id=run_id,
         ) from exc
 
     logger.debug(
-        "Run meta updated",
-        extra={"run_id": run_id, "stage": stage_field, "status": status},
+        "Run META VALIDATE updated",
+        extra={
+            "run_id": run_id,
+            "status": status,
+            "validate_tags_success": validate_tags_success,
+            "validate_tags_failed": validate_tags_failed,
+            "records_validated": records_validated,
+            "records_rejected": records_rejected,
+        },
     )

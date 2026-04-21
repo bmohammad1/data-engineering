@@ -40,88 +40,95 @@ def _not_null_or_empty(col_name: str) -> Column:
 
 # Each entry is a list of (rule_name, passing_condition) tuples.
 # A row is VALID only if ALL conditions evaluate to True.
+#
+# Rules are wrapped in callables so PySpark Column expressions are constructed
+# lazily (at call time, not at module import time). This allows the module to
+# be imported without an active SparkContext — required for unit testing.
 
-VALIDATION_RULES: dict[str, list[tuple[str, Column]]] = {
-    "tag": [
-        ("tag_id_required",   _not_null_or_empty("TagID")),
-    ],
-    "equipment": [
-        ("equipment_id_required", _not_null_or_empty("EquipmentID")),
-    ],
-    "location": [
-        ("location_id_required", _not_null_or_empty("LocationID")),
-    ],
-    "customer": [
-        ("customer_id_required", _not_null_or_empty("CustomerID")),
-    ],
-    "measurements": [
-        ("measurement_id_required", _not_null_or_empty("MeasurementID")),
-        ("tag_id_required",         _not_null_or_empty("TagID")),
-        ("value_not_null",          F.col("Value").isNotNull()),
-        ("timestamp_not_null",      F.col("Timestamp").isNotNull()),
-        ("quality_flag_valid",      _in_set("QualityFlag", _QUALITY_FLAGS)),
-    ],
-    "alarms": [
-        ("alarm_id_required",      _not_null_or_empty("AlarmID")),
-        ("tag_id_required",        _not_null_or_empty("TagID")),
-        ("threshold_not_null",     F.col("ThresholdValue").isNotNull()),
-        ("threshold_non_negative", F.col("ThresholdValue") >= 0),
-        ("timestamp_not_null",     F.col("Timestamp").isNotNull()),
-        ("status_valid",           _in_set("Status", _ALARM_STATUSES)),
-    ],
-    "maintenance": [
-        ("maintenance_id_required", _not_null_or_empty("MaintenanceID")),
-        ("tag_id_required",         _not_null_or_empty("TagID")),
-        ("date_not_null",           F.col("MaintenanceDate").isNotNull()),
-        ("technician_required",     _not_null_or_empty("Technician")),
-    ],
-    "events": [
-        ("event_id_required",  _not_null_or_empty("EventID")),
-        ("tag_id_required",    _not_null_or_empty("TagID")),
-        ("timestamp_not_null", F.col("Timestamp").isNotNull()),
-    ],
-    "contracts": [
-        ("contract_id_required",    _not_null_or_empty("ContractID")),
-        ("customer_id_required",    _not_null_or_empty("CustomerID")),
-        ("tag_id_required",         _not_null_or_empty("TagID")),
-        ("volume_positive",         F.col("ContractVolume") > 0),
-        ("price_positive",          F.col("PricePerUnit") > 0),
-        ("end_after_start",
-            F.col("ContractEndDate").isNotNull() &
-            F.col("ContractStartDate").isNotNull() &
-            (F.col("ContractEndDate") >= F.col("ContractStartDate"))
-        ),
-    ],
-    "billing": [
-        ("billing_id_required",    _not_null_or_empty("BillingID")),
-        ("tag_id_required",        _not_null_or_empty("TagID")),
-        ("customer_id_required",   _not_null_or_empty("CustomerID")),
-        ("consumption_non_negative", F.col("ConsumptionVolume") >= 0),
-        ("amount_non_negative",    F.col("TotalAmount") >= 0),
-        ("payment_status_valid",   _in_set("PaymentStatus", _PAYMENT_STATUSES)),
-    ],
-    "inventory": [
-        ("inventory_id_required", _not_null_or_empty("InventoryID")),
-        ("tag_id_required",       _not_null_or_empty("TagID")),
-        ("quantity_non_negative", F.col("Quantity") >= 0),
-    ],
-    "regulatory_compliance": [
-        ("compliance_id_required", _not_null_or_empty("ComplianceID")),
-        ("tag_id_required",        _not_null_or_empty("TagID")),
-        ("inspection_date_not_null", F.col("InspectionDate").isNotNull()),
-    ],
-    "financial_forecasts": [
-        ("forecast_id_required",       _not_null_or_empty("ForecastID")),
-        ("tag_id_required",            _not_null_or_empty("TagID")),
-        ("consumption_non_negative",   F.col("ExpectedConsumption") >= 0),
-        ("revenue_non_negative",       F.col("ExpectedRevenue") >= 0),
-        ("risk_factor_in_range",
-            F.col("RiskFactor").isNotNull() &
-            (F.col("RiskFactor") >= 0.0) &
-            (F.col("RiskFactor") <= 1.0)
-        ),
-    ],
-}
+def _build_rules() -> dict[str, list[tuple[str, Column]]]:
+    return {
+        "tag": [
+            ("tag_id_required",   _not_null_or_empty("TagID")),
+        ],
+        "equipment": [
+            ("equipment_id_required", _not_null_or_empty("EquipmentID")),
+        ],
+        "location": [
+            ("location_id_required", _not_null_or_empty("LocationID")),
+        ],
+        "customer": [
+            ("customer_id_required", _not_null_or_empty("CustomerID")),
+        ],
+        "measurements": [
+            ("measurement_id_required", _not_null_or_empty("MeasurementID")),
+            ("tag_id_required",         _not_null_or_empty("TagID")),
+            ("value_not_null",          F.col("Value").isNotNull()),
+            ("timestamp_not_null",      F.col("Timestamp").isNotNull()),
+            ("quality_flag_valid",      _in_set("QualityFlag", _QUALITY_FLAGS)),
+        ],
+        "alarms": [
+            ("alarm_id_required",      _not_null_or_empty("AlarmID")),
+            ("tag_id_required",        _not_null_or_empty("TagID")),
+            ("threshold_not_null",     F.col("ThresholdValue").isNotNull()),
+            ("threshold_non_negative", F.col("ThresholdValue") >= 0),
+            ("timestamp_not_null",     F.col("Timestamp").isNotNull()),
+            ("status_valid",           _in_set("Status", _ALARM_STATUSES)),
+        ],
+        "maintenance": [
+            ("maintenance_id_required", _not_null_or_empty("MaintenanceID")),
+            ("tag_id_required",         _not_null_or_empty("TagID")),
+            ("date_not_null",           F.col("MaintenanceDate").isNotNull()),
+            ("technician_required",     _not_null_or_empty("Technician")),
+        ],
+        "events": [
+            ("event_id_required",  _not_null_or_empty("EventID")),
+            ("tag_id_required",    _not_null_or_empty("TagID")),
+            ("timestamp_not_null", F.col("Timestamp").isNotNull()),
+        ],
+        "contracts": [
+            ("contract_id_required",  _not_null_or_empty("ContractID")),
+            ("customer_id_required",  _not_null_or_empty("CustomerID")),
+            ("tag_id_required",       _not_null_or_empty("TagID")),
+            ("volume_positive",       F.col("ContractVolume") > 0),
+            ("price_positive",        F.col("PricePerUnit") > 0),
+            (
+                "end_after_start",
+                F.col("ContractEndDate").isNotNull()
+                & F.col("ContractStartDate").isNotNull()
+                & (F.col("ContractEndDate") >= F.col("ContractStartDate")),
+            ),
+        ],
+        "billing": [
+            ("billing_id_required",      _not_null_or_empty("BillingID")),
+            ("tag_id_required",          _not_null_or_empty("TagID")),
+            ("customer_id_required",     _not_null_or_empty("CustomerID")),
+            ("consumption_non_negative", F.col("ConsumptionVolume") >= 0),
+            ("amount_non_negative",      F.col("TotalAmount") >= 0),
+            ("payment_status_valid",     _in_set("PaymentStatus", _PAYMENT_STATUSES)),
+        ],
+        "inventory": [
+            ("inventory_id_required", _not_null_or_empty("InventoryID")),
+            ("tag_id_required",       _not_null_or_empty("TagID")),
+            ("quantity_non_negative", F.col("Quantity") >= 0),
+        ],
+        "regulatory_compliance": [
+            ("compliance_id_required",   _not_null_or_empty("ComplianceID")),
+            ("tag_id_required",          _not_null_or_empty("TagID")),
+            ("inspection_date_not_null", F.col("InspectionDate").isNotNull()),
+        ],
+        "financial_forecasts": [
+            ("forecast_id_required",     _not_null_or_empty("ForecastID")),
+            ("tag_id_required",          _not_null_or_empty("TagID")),
+            ("consumption_non_negative", F.col("ExpectedConsumption") >= 0),
+            ("revenue_non_negative",     F.col("ExpectedRevenue") >= 0),
+            (
+                "risk_factor_in_range",
+                F.col("RiskFactor").isNotNull()
+                & (F.col("RiskFactor") >= 0.0)
+                & (F.col("RiskFactor") <= 1.0),
+            ),
+        ],
+    }
 
 
 def apply_validation(df: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
@@ -130,7 +137,7 @@ def apply_validation(df: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
     invalid_df gets an extra _validation_errors column listing every
     rule name that failed, separated by '; '.
     """
-    rules = VALIDATION_RULES.get(table, [])
+    rules = _build_rules().get(table, [])
 
     if not rules:
         logger.warning("No validation rules defined for table '%s' — treating all rows as valid", table)

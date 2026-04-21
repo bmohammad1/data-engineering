@@ -5,8 +5,9 @@ flattens each nested domain table into a separate DataFrame, applies data
 engineering best-practice transformations, and writes the cleaned output to
 the cleaned S3 bucket as newline-delimited JSON (one folder per table).
 
-Invoked by the transformation Step Function state machine. The run_id
-argument scopes all reads and writes to the current pipeline run.
+Fault isolation: a single corrupt tag file does not abort the job. Corrupt
+envelopes are detected after PERMISSIVE read and that tag is marked FAILED in
+DynamoDB while all other tags continue processing.
 
 Input  → s3://<RAW_BUCKET>/raw/<run_id>/          (one JSON file per tag)
 Output → s3://<CLEANED_BUCKET>/cleaned/<run_id>/<table>/
@@ -17,9 +18,11 @@ import os
 import sys
 import time
 
+import boto3
 from awsglue.utils import getResolvedOptions
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+from pyspark.sql.types import StringType
 
 from utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
 from utils.spark_helpers import add_audit_columns, create_glue_context, write_json_to_s3
@@ -34,19 +37,16 @@ from shared.logger import configure_logging, run_id_ctx
 configure_logging()
 logger = logging.getLogger(__name__)
 
-# Enum-like columns that should be upper-cased for consistency
 _ENUM_COLUMNS = {"QualityFlag", "Status", "PaymentStatus"}
 
 
 # ---------------------------------------------------------------------------
-# Raw data extraction helpers
+# Raw data discovery
 # ---------------------------------------------------------------------------
 
 
 def _discover_tag_ids(raw_bucket: str, run_id: str) -> list[str]:
     """List all tag IDs present in the raw S3 prefix by reading object keys."""
-    import boto3
-
     s3 = boto3.client("s3")
     prefix = f"raw/{run_id}/"
     paginator = s3.get_paginator("list_objects_v2")
@@ -54,45 +54,64 @@ def _discover_tag_ids(raw_bucket: str, run_id: str) -> list[str]:
     tag_ids = []
     for page in paginator.paginate(Bucket=raw_bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
-            # Key format: raw/<run_id>/<tag_id>.json
             filename = obj["Key"].split("/")[-1]
             if filename.endswith(".json"):
-                tag_ids.append(filename[:-5])  # strip .json
+                tag_ids.append(filename[:-5])
 
     return tag_ids
 
 
-def _read_table_from_raw(spark, raw_s3_path: str, table_name: str) -> DataFrame:
-    """Extract one domain table from all raw TagResponse JSON files.
+# ---------------------------------------------------------------------------
+# Per-table extraction with corrupt envelope detection
+# ---------------------------------------------------------------------------
 
-    spark.read.json reads every file in the prefix as one row (one row = one
-    TagResponse = one tag). We then pull out the column for this table and
-    explode list-type tables so that one row = one domain record.
+
+def _extract_table(spark, raw_s3_path: str, table_name: str) -> tuple[DataFrame, set[str]]:
+    """Read one domain table from all raw TagResponse JSON files.
+
+    Returns (clean_envelope_df, corrupt_tag_ids).
+
+    PERMISSIVE mode lets Spark parse what it can. Rows where the top-level
+    envelope is unreadable land in _corrupt_record. We extract the tag_id
+    from _metadata.file_path before splitting good/bad envelopes so the
+    metadata column (only available on the raw read) is captured immediately.
     """
     schema = TABLE_SCHEMAS[table_name]
     is_list = table_name in LIST_TABLES
 
-    # Read the full raw envelope — infer the top-level structure, no strict schema yet.
-    # We apply the per-table schema after exploding so Spark can cast correctly.
-    raw_df = spark.read.option("mode", "PERMISSIVE").json(raw_s3_path)
+    raw_df = (
+        spark.read
+        .option("mode", "PERMISSIVE")
+        .json(raw_s3_path)
+        .withColumn("_file_path", F.col("_metadata.file_path"))
+    )
 
-    if table_name not in raw_df.columns:
-        logger.warning("Column '%s' not found in raw data — returning empty DataFrame", table_name)
-        return spark.createDataFrame([], schema)
+    # Detect and recover corrupt envelopes before any further processing
+    corrupt_df = raw_df.filter(F.col("_corrupt_record").isNotNull())
+    corrupt_tag_ids: set[str] = {
+        os.path.basename(row._file_path).replace(".json", "")
+        for row in corrupt_df.select("_file_path").distinct().collect()
+        if row._file_path
+    }
+
+    good_df = raw_df.filter(F.col("_corrupt_record").isNull())
+
+    if table_name not in good_df.columns:
+        logger.warning(
+            "Column not found in raw data — returning empty DataFrame",
+            extra={"run_id": None, "table": table_name},
+        )
+        return spark.createDataFrame([], schema), corrupt_tag_ids
 
     if is_list:
-        # Explode the array: one row per domain record across all tags
         exploded = (
-            raw_df
+            good_df
             .select(F.explode(F.col(table_name)).alias("_record"))
             .select("_record.*")
         )
     else:
-        # Single-object tables (tag, equipment, location, customer)
-        exploded = raw_df.select(f"{table_name}.*")
+        exploded = good_df.select(f"{table_name}.*")
 
-    # Select only the columns defined in the schema, casting to declared types.
-    # Any injected extra columns from dirty data are silently dropped here.
     select_exprs = []
     for field in schema.fields:
         if field.name in exploded.columns:
@@ -100,7 +119,7 @@ def _read_table_from_raw(spark, raw_s3_path: str, table_name: str) -> DataFrame:
         else:
             select_exprs.append(F.lit(None).cast(field.dataType).alias(field.name))
 
-    return exploded.select(select_exprs)
+    return exploded.select(select_exprs), corrupt_tag_ids
 
 
 # ---------------------------------------------------------------------------
@@ -113,36 +132,46 @@ def _apply_transformations(df: DataFrame, table_name: str, run_id: str) -> DataF
     schema = TABLE_SCHEMAS[table_name]
     primary_key = PRIMARY_KEYS[table_name]
 
-    # 1. Drop rows where the primary key is null — these are unsalvageable
     df = df.filter(F.col(primary_key).isNotNull() & (F.trim(F.col(primary_key)) != ""))
-
-    # 2. Deduplicate by primary key — keep the first occurrence
     df = df.dropDuplicates([primary_key])
 
-    # 3. Normalize strings: trim whitespace on all string columns,
-    #    upper-case known enum columns
     for field in schema.fields:
         col_name = field.name
-        from pyspark.sql.types import StringType
         if isinstance(field.dataType, StringType):
             if col_name in _ENUM_COLUMNS:
                 df = df.withColumn(col_name, F.upper(F.trim(F.col(col_name))))
             else:
                 df = df.withColumn(col_name, F.trim(F.col(col_name)))
-            # Fill nulls in optional string columns with UNKNOWN sentinel
             if field.nullable and col_name != primary_key:
                 df = df.withColumn(
                     col_name,
                     F.when(
                         F.col(col_name).isNull() | (F.col(col_name) == ""),
-                        F.lit("UNKNOWN")
-                    ).otherwise(F.col(col_name))
+                        F.lit("UNKNOWN"),
+                    ).otherwise(F.col(col_name)),
                 )
 
-    # 4. Audit columns
-    df = add_audit_columns(df, run_id, table_name)
+    return add_audit_columns(df, run_id, table_name)
 
-    return df
+
+# ---------------------------------------------------------------------------
+# Per-tag count accumulation helpers
+# ---------------------------------------------------------------------------
+
+
+def _accumulate_tag_counts(
+    df: DataFrame,
+    count_key: str,
+    tag_stats: dict[str, dict],
+) -> None:
+    """Add per-tag row counts from df into tag_stats[tag_id][count_key]."""
+    if "TagID" not in df.columns:
+        return
+    for row in df.groupBy("TagID").count().collect():
+        tid = row.TagID
+        if tid:
+            tag_stats.setdefault(tid, {"extracted": 0, "transformed": 0})
+            tag_stats[tid][count_key] += row["count"]
 
 
 # ---------------------------------------------------------------------------
@@ -178,18 +207,33 @@ def main() -> None:
     update_run_transform_status(table_name_dynamo, run_id, STATUS_RUNNING)
 
     raw_s3_path = f"s3://{raw_bucket}/raw/{run_id}/"
+    all_tag_ids: set[str] = set(_discover_tag_ids(raw_bucket, run_id))
+
+    # Accumulated across all tables:
+    # { tag_id: { "extracted": int, "transformed": int } }
+    tag_stats: dict[str, dict] = {}
+    corrupt_tag_ids: set[str] = set()
     total_records = 0
 
     for table_name in TABLE_SCHEMAS:
         table_start = time.perf_counter()
         try:
-            df = _read_table_from_raw(spark, raw_s3_path, table_name)
-            df = _apply_transformations(df, table_name, run_id)
+            pre_df, table_corrupt_ids = _extract_table(spark, raw_s3_path, table_name)
+            corrupt_tag_ids |= table_corrupt_ids
 
-            count = df.count()
-            cleaned_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
-            write_json_to_s3(df, cleaned_path)
+            # Count extracted rows per tag before null-PK drop
+            _accumulate_tag_counts(pre_df, "extracted", tag_stats)
+
+            transformed_df = _apply_transformations(pre_df, table_name, run_id)
+
+            # Count transformed rows per tag after null-PK drop
+            _accumulate_tag_counts(transformed_df, "transformed", tag_stats)
+
+            count = transformed_df.count()
             total_records += count
+
+            cleaned_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
+            write_json_to_s3(transformed_df, cleaned_path)
 
             duration_ms = round((time.perf_counter() - table_start) * 1_000, 2)
             logger.info(
@@ -198,6 +242,7 @@ def main() -> None:
                     "run_id": run_id,
                     "table": table_name,
                     "records": count,
+                    "corrupt_tags_detected": len(table_corrupt_ids),
                     "duration_ms": duration_ms,
                 },
             )
@@ -208,23 +253,95 @@ def main() -> None:
             )
             raise
 
-    # Per-tag DynamoDB updates — discover tag IDs from the raw prefix
-    tag_ids = _discover_tag_ids(raw_bucket, run_id)
-    for tag_id in tag_ids:
+    # Tags that had no corrupt envelope but still produced zero transformed rows
+    tags_with_output = {tid for tid, s in tag_stats.items() if s["transformed"] > 0}
+    zero_record_tags = all_tag_ids - corrupt_tag_ids - tags_with_output
+
+    # Per-tag DynamoDB updates
+    tags_success: set[str] = set()
+    tags_failed: set[str] = corrupt_tag_ids | zero_record_tags
+    total_dropped = 0
+
+    for tag_id in corrupt_tag_ids:
+        logger.error(
+            "Tag transform failed — corrupt JSON envelope",
+            extra={
+                "run_id": run_id,
+                "tag_id": tag_id,
+                "failure_reason": "corrupt_json_envelope",
+                "records_extracted": 0,
+                "records_transformed": 0,
+            },
+        )
         try:
-            update_tag_transform_status(table_name_dynamo, run_id, tag_id, STATUS_SUCCESS)
+            update_tag_transform_status(table_name_dynamo, run_id, tag_id, STATUS_FAILED)
         except Exception:
             logger.warning(
-                "Failed to update DynamoDB for tag — continuing",
+                "Failed to update DynamoDB for corrupt tag — continuing",
+                extra={"run_id": run_id, "tag_id": tag_id},
+            )
+
+    for tag_id in zero_record_tags:
+        extracted = tag_stats.get(tag_id, {}).get("extracted", 0)
+        logger.error(
+            "Tag transform failed — zero usable records after cast",
+            extra={
+                "run_id": run_id,
+                "tag_id": tag_id,
+                "failure_reason": "zero_usable_records",
+                "records_extracted": extracted,
+                "records_transformed": 0,
+            },
+        )
+        try:
+            update_tag_transform_status(
+                table_name_dynamo,
+                run_id,
+                tag_id,
+                STATUS_FAILED,
+                records_extracted=extracted,
+                records_dropped=extracted,
+                records_transformed=0,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update DynamoDB for zero-record tag — continuing",
+                extra={"run_id": run_id, "tag_id": tag_id},
+            )
+
+    for tag_id in tags_with_output:
+        stats = tag_stats.get(tag_id, {"extracted": 0, "transformed": 0})
+        extracted = stats["extracted"]
+        transformed = stats["transformed"]
+        dropped = extracted - transformed
+        total_dropped += dropped
+        tags_success.add(tag_id)
+        try:
+            update_tag_transform_status(
+                table_name_dynamo,
+                run_id,
+                tag_id,
+                STATUS_SUCCESS,
+                records_extracted=extracted,
+                records_dropped=dropped,
+                records_transformed=transformed,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update DynamoDB for successful tag — continuing",
                 extra={"run_id": run_id, "tag_id": tag_id},
             )
 
     total_duration_ms = round((time.perf_counter() - job_start) * 1_000, 2)
+
     update_run_transform_status(
         table_name_dynamo,
         run_id,
         STATUS_SUCCESS,
+        transform_tags_success=len(tags_success),
+        transform_tags_failed=len(tags_failed),
         records_transformed=total_records,
+        records_dropped=total_dropped,
     )
 
     logger.info(
@@ -232,8 +349,10 @@ def main() -> None:
         extra={
             "run_id": run_id,
             "total_records": total_records,
+            "total_dropped": total_dropped,
+            "tags_success": len(tags_success),
+            "tags_failed": len(tags_failed),
             "total_duration_ms": total_duration_ms,
-            "tags_processed": len(tag_ids),
         },
     )
 

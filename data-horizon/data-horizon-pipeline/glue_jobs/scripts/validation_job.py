@@ -4,11 +4,15 @@ Reads cleaned JSON from the cleaned S3 bucket, applies per-table data quality
 rules, and routes records to one of two destinations:
 
   PASS → s3://<VALIDATED_BUCKET>/validated/<run_id>/<table>/  (Parquet, snappy)
-  FAIL → s3://<QUARANTINE_BUCKET>/quarantine/<run_id>/<table>/ (JSON, with _validation_errors)
+  FAIL → s3://<QUARANTINE_BUCKET>/quarantine/<run_id>/<table>/ (JSON, _validation_errors)
 
 Updates DynamoDB with per-tag and per-run validation outcomes.
 Registers validated Parquet tables in the Glue Data Catalog so Athena
 can query them immediately without MSCK REPAIR TABLE.
+
+A tag is marked VALIDATE=FAILED only when every record it contributed across
+all 13 tables was quarantined (valid_count == 0). Partial quarantine is
+acceptable — the tag still contributed usable data.
 
 Raises RuntimeError if every record across all tables fails validation —
 this signals a catastrophic data quality failure to the Step Function.
@@ -18,7 +22,6 @@ import logging
 import sys
 import time
 
-import boto3
 from awsglue.utils import getResolvedOptions
 
 from utils.schema_definitions import TABLE_SCHEMAS
@@ -40,36 +43,6 @@ from shared.logger import configure_logging, run_id_ctx
 
 configure_logging()
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Helper: discover tag IDs from the cleaned S3 prefix
-# ---------------------------------------------------------------------------
-
-
-def _discover_tag_ids_from_cleaned(cleaned_bucket: str, run_id: str) -> list[str]:
-    """Collect unique TagID values by reading a sample of the first cleaned table.
-
-    We read the 'measurements' table (largest, most likely to have all tags).
-    Falls back to 'tag' if measurements is absent.
-    """
-    s3 = boto3.client("s3")
-    probe_tables = ["measurements", "tag"]
-
-    for probe in probe_tables:
-        prefix = f"cleaned/{run_id}/{probe}/"
-        resp = s3.list_objects_v2(Bucket=cleaned_bucket, Prefix=prefix, MaxKeys=1)
-        if resp.get("Contents"):
-            return probe  # caller reads TagID from this table's DataFrame
-
-    return []
-
-
-def _collect_tag_ids_from_df(df, table_name: str) -> list[str]:
-    """Extract distinct TagID values from a DataFrame, if the column exists."""
-    if "TagID" not in df.columns:
-        return []
-    return [row.TagID for row in df.select("TagID").distinct().collect() if row.TagID]
 
 
 # ---------------------------------------------------------------------------
@@ -116,8 +89,7 @@ def main() -> None:
     total_valid = 0
     total_quarantined = 0
 
-    # Accumulate per-tag counts across all tables so we can update DynamoDB once per tag
-    # { tag_id: {"valid": int, "invalid": int} }
+    # { tag_id: {"valid": int, "invalid": int} } — accumulated across all tables
     tag_counts: dict[str, dict] = {}
     all_tag_ids: set[str] = set()
 
@@ -132,10 +104,9 @@ def main() -> None:
             valid_count = valid_df.count()
             invalid_count = invalid_df.count()
 
-            # Write valid records to validated bucket via Glue Catalog sink
-            catalog_table = f"validated_{table_name}"
-            validated_path = f"s3://{validated_bucket}/validated/{run_id}/{table_name}/"
             if valid_count > 0:
+                catalog_table = f"validated_{table_name}"
+                validated_path = f"s3://{validated_bucket}/validated/{run_id}/{table_name}/"
                 write_parquet_to_catalog(
                     glue_ctx,
                     add_audit_columns(valid_df, run_id, table_name),
@@ -144,7 +115,6 @@ def main() -> None:
                     validated_path,
                 )
 
-            # Write invalid records to quarantine bucket as JSON for forensics
             if invalid_count > 0:
                 quarantine_path = f"s3://{quarantine_bucket}/quarantine/{run_id}/{table_name}/"
                 write_json_to_s3(
@@ -155,7 +125,6 @@ def main() -> None:
             total_valid += valid_count
             total_quarantined += invalid_count
 
-            # Accumulate per-tag counts from tables that carry a TagID column
             if "TagID" in valid_df.columns:
                 for row in valid_df.groupBy("TagID").count().collect():
                     tid = row.TagID
@@ -192,9 +161,27 @@ def main() -> None:
             raise
 
     # Per-tag DynamoDB updates
+    tags_success = 0
+    tags_failed = 0
+
     for tag_id in all_tag_ids:
         counts = tag_counts.get(tag_id, {"valid": 0, "invalid": 0})
         tag_status = STATUS_SUCCESS if counts["valid"] > 0 else STATUS_FAILED
+
+        if tag_status == STATUS_FAILED:
+            tags_failed += 1
+            logger.error(
+                "Tag validation failed — all records quarantined",
+                extra={
+                    "run_id": run_id,
+                    "tag_id": tag_id,
+                    "valid_count": 0,
+                    "invalid_count": counts["invalid"],
+                },
+            )
+        else:
+            tags_success += 1
+
         try:
             update_tag_validate_status(
                 table_name_dynamo,
@@ -211,10 +198,13 @@ def main() -> None:
             )
 
     total_duration_ms = round((time.perf_counter() - job_start) * 1_000, 2)
+
     update_run_validate_status(
         table_name_dynamo,
         run_id,
         STATUS_SUCCESS,
+        validate_tags_success=tags_success,
+        validate_tags_failed=tags_failed,
         records_validated=total_valid,
         records_rejected=total_quarantined,
     )
@@ -225,8 +215,9 @@ def main() -> None:
             "run_id": run_id,
             "total_valid": total_valid,
             "total_quarantined": total_quarantined,
+            "tags_success": tags_success,
+            "tags_failed": tags_failed,
             "total_duration_ms": total_duration_ms,
-            "tags_evaluated": len(all_tag_ids),
         },
     )
 
