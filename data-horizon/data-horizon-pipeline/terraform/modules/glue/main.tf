@@ -12,6 +12,12 @@ resource "aws_glue_job" "transform" {
     "--job-language"                     = "python"
     "--enable-continuous-cloudwatch-log" = "true"
     "--SECRET_NAME"                      = var.secret_name
+    "--RAW_BUCKET"                       = var.raw_bucket_name
+    "--CLEANED_BUCKET"                   = var.cleaned_bucket_name
+    "--PIPELINE_STATE_TABLE"             = var.pipeline_state_table
+    "--ENVIRONMENT"                      = var.environment
+    "--LOG_LEVEL"                        = "INFO"
+    "--extra-py-files"                   = "s3://${var.scripts_bucket_name}/scripts/utils.zip"
   }
 
   glue_version      = "4.0"
@@ -38,6 +44,14 @@ resource "aws_glue_job" "validation" {
     "--job-language"                     = "python"
     "--enable-continuous-cloudwatch-log" = "true"
     "--SECRET_NAME"                      = var.secret_name
+    "--CLEANED_BUCKET"                   = var.cleaned_bucket_name
+    "--VALIDATED_BUCKET"                 = var.validated_bucket_name
+    "--QUARANTINE_BUCKET"                = var.quarantine_bucket_name
+    "--PIPELINE_STATE_TABLE"             = var.pipeline_state_table
+    "--GLUE_DATABASE"                    = var.glue_database
+    "--ENVIRONMENT"                      = var.environment
+    "--LOG_LEVEL"                        = "INFO"
+    "--extra-py-files"                   = "s3://${var.scripts_bucket_name}/scripts/utils.zip"
   }
 
   glue_version      = "4.0"

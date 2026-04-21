@@ -1,13 +1,102 @@
 {
-  "Comment": "Child3: Placeholder skeleton",
-  "StartAt": "StartState",
+  "Comment": "Child3: Invoke Glue transform job then validation job in sequence",
+  "StartAt": "RunTransformJob",
   "States": {
-    "StartState": {
-      "Type": "Pass",
-      "Next": "EndState"
+    "RunTransformJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${transform_glue_job_name}",
+        "Arguments": {
+          "--run_id.$": "$.run_id"
+        }
+      },
+      "TimeoutSeconds": 3600,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.AmazonGlueException", "States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyTransformFailure"
+        }
+      ],
+      "ResultPath": null,
+      "Next": "RunValidationJob"
     },
-    "EndState": {
-      "Type": "Succeed"
+    "RunValidationJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${validation_glue_job_name}",
+        "Arguments": {
+          "--run_id.$": "$.run_id"
+        }
+      },
+      "TimeoutSeconds": 3600,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.AmazonGlueException", "States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyValidationFailure"
+        }
+      ],
+      "ResultPath": null,
+      "Next": "TransformationSuccess"
+    },
+    "TransformationSuccess": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "status": "SUCCESS"
+      },
+      "End": true
+    },
+    "NotifyTransformFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Data Horizon — Transform Job Failed",
+        "Message.$": "States.Format('Transform Glue job failed for run: {} | Error: {} | Cause: {}', $.run_id, $.error.Error, $.error.Cause)"
+      },
+      "ResultPath": null,
+      "Next": "TransformationFailed"
+    },
+    "NotifyValidationFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Data Horizon — Validation Job Failed",
+        "Message.$": "States.Format('Validation Glue job failed for run: {} | Error: {} | Cause: {}', $.run_id, $.error.Error, $.error.Cause)"
+      },
+      "ResultPath": null,
+      "Next": "ValidationFailed"
+    },
+    "TransformationFailed": {
+      "Type": "Fail",
+      "Error": "TransformationFailed",
+      "Cause": "Glue transform job failed after retries"
+    },
+    "ValidationFailed": {
+      "Type": "Fail",
+      "Error": "ValidationFailed",
+      "Cause": "Glue validation job failed after retries"
     }
   }
 }

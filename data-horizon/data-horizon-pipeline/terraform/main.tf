@@ -122,21 +122,29 @@ module "lambda" {
 module "glue" {
   source = "./modules/glue"
 
-  name_prefix         = local.name_prefix
-  glue_role_arn       = module.iam.glue_role_arn
-  scripts_bucket_name = module.s3.scripts_bucket_name
-  secret_name         = module.secrets_manager.secret_name
-  tags                = local.common_tags
+  name_prefix            = local.name_prefix
+  glue_role_arn          = module.iam.glue_role_arn
+  scripts_bucket_name    = module.s3.scripts_bucket_name
+  secret_name            = module.secrets_manager.secret_name
+  raw_bucket_name        = module.s3.raw_bucket_name
+  cleaned_bucket_name    = module.s3.cleaned_bucket_name
+  validated_bucket_name  = module.s3.validated_bucket_name
+  quarantine_bucket_name = module.s3.bad_bucket_name
+  pipeline_state_table   = module.dynamodb.table_name
+  glue_database          = module.glue_catalog.database_name
+  environment            = var.environment
+  tags                   = local.common_tags
 }
 
 # --- Glue Data Catalog ---
 module "glue_catalog" {
   source = "./modules/glue_catalog"
 
-  name_prefix         = local.name_prefix
-  raw_bucket_name     = module.s3.raw_bucket_name
-  cleaned_bucket_name = module.s3.cleaned_bucket_name
+  name_prefix           = local.name_prefix
+  raw_bucket_name       = module.s3.raw_bucket_name
+  cleaned_bucket_name   = module.s3.cleaned_bucket_name
   validated_bucket_name = module.s3.validated_bucket_name
+  bad_bucket_name       = module.s3.bad_bucket_name
   tags                  = local.common_tags
 }
 
