@@ -25,9 +25,18 @@ resource "aws_glue_catalog_table" "raw_data" {
     ser_de_info {
       serialization_library = "org.openx.data.jsonserde.JsonSerDe"
     }
-    columns { name = "run_id";   type = "string" }
-    columns { name = "tag_id";   type = "string" }
-    columns { name = "data";     type = "string" }
+    columns {
+      name = "run_id"
+      type = "string"
+    }
+    columns {
+      name = "tag_id"
+      type = "string"
+    }
+    columns {
+      name = "data"
+      type = "string"
+    }
   }
 }
 
@@ -46,14 +55,37 @@ resource "aws_glue_catalog_table" "cleaned_measurements" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "MeasurementID"; type = "string" }
-    columns { name = "TagID";         type = "string" }
-    columns { name = "Timestamp";     type = "timestamp" }
-    columns { name = "Value";         type = "double" }
-    columns { name = "QualityFlag";   type = "string" }
-    columns { name = "_run_id";       type = "string" }
-    columns { name = "_ingested_at";  type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "MeasurementID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "Timestamp"
+      type = "timestamp"
+    }
+    columns {
+      name = "Value"
+      type = "double"
+    }
+    columns {
+      name = "QualityFlag"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -68,15 +100,41 @@ resource "aws_glue_catalog_table" "cleaned_alarms" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "AlarmID";        type = "string" }
-    columns { name = "TagID";          type = "string" }
-    columns { name = "AlarmType";      type = "string" }
-    columns { name = "ThresholdValue"; type = "double" }
-    columns { name = "Timestamp";      type = "timestamp" }
-    columns { name = "Status";         type = "string" }
-    columns { name = "_run_id";        type = "string" }
-    columns { name = "_ingested_at";   type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "AlarmID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "AlarmType"
+      type = "string"
+    }
+    columns {
+      name = "ThresholdValue"
+      type = "double"
+    }
+    columns {
+      name = "Timestamp"
+      type = "timestamp"
+    }
+    columns {
+      name = "Status"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -91,15 +149,41 @@ resource "aws_glue_catalog_table" "cleaned_maintenance" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "MaintenanceID";   type = "string" }
-    columns { name = "TagID";           type = "string" }
-    columns { name = "WorkOrderID";     type = "string" }
-    columns { name = "MaintenanceDate"; type = "date" }
-    columns { name = "ActionTaken";     type = "string" }
-    columns { name = "Technician";      type = "string" }
-    columns { name = "_run_id";         type = "string" }
-    columns { name = "_ingested_at";    type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "MaintenanceID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "WorkOrderID"
+      type = "string"
+    }
+    columns {
+      name = "MaintenanceDate"
+      type = "date"
+    }
+    columns {
+      name = "ActionTaken"
+      type = "string"
+    }
+    columns {
+      name = "Technician"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -114,14 +198,37 @@ resource "aws_glue_catalog_table" "cleaned_events" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "EventID";      type = "string" }
-    columns { name = "TagID";        type = "string" }
-    columns { name = "EventType";    type = "string" }
-    columns { name = "Timestamp";    type = "timestamp" }
-    columns { name = "Notes";        type = "string" }
-    columns { name = "_run_id";      type = "string" }
-    columns { name = "_ingested_at"; type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "EventID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "EventType"
+      type = "string"
+    }
+    columns {
+      name = "Timestamp"
+      type = "timestamp"
+    }
+    columns {
+      name = "Notes"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -136,16 +243,45 @@ resource "aws_glue_catalog_table" "cleaned_billing" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "BillingID";         type = "string" }
-    columns { name = "TagID";             type = "string" }
-    columns { name = "CustomerID";        type = "string" }
-    columns { name = "BillingPeriod";     type = "string" }
-    columns { name = "ConsumptionVolume"; type = "double" }
-    columns { name = "TotalAmount";       type = "double" }
-    columns { name = "PaymentStatus";     type = "string" }
-    columns { name = "_run_id";           type = "string" }
-    columns { name = "_ingested_at";      type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "BillingID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "CustomerID"
+      type = "string"
+    }
+    columns {
+      name = "BillingPeriod"
+      type = "string"
+    }
+    columns {
+      name = "ConsumptionVolume"
+      type = "double"
+    }
+    columns {
+      name = "TotalAmount"
+      type = "double"
+    }
+    columns {
+      name = "PaymentStatus"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -160,16 +296,45 @@ resource "aws_glue_catalog_table" "cleaned_contracts" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "ContractID";        type = "string" }
-    columns { name = "CustomerID";        type = "string" }
-    columns { name = "TagID";             type = "string" }
-    columns { name = "ContractStartDate"; type = "date" }
-    columns { name = "ContractEndDate";   type = "date" }
-    columns { name = "ContractVolume";    type = "double" }
-    columns { name = "PricePerUnit";      type = "double" }
-    columns { name = "_run_id";           type = "string" }
-    columns { name = "_ingested_at";      type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "ContractID"
+      type = "string"
+    }
+    columns {
+      name = "CustomerID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "ContractStartDate"
+      type = "date"
+    }
+    columns {
+      name = "ContractEndDate"
+      type = "date"
+    }
+    columns {
+      name = "ContractVolume"
+      type = "double"
+    }
+    columns {
+      name = "PricePerUnit"
+      type = "double"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -184,15 +349,41 @@ resource "aws_glue_catalog_table" "cleaned_inventory" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "InventoryID";     type = "string" }
-    columns { name = "TagID";           type = "string" }
-    columns { name = "MaterialType";    type = "string" }
-    columns { name = "Quantity";        type = "int" }
-    columns { name = "StorageLocation"; type = "string" }
-    columns { name = "LastUpdated";     type = "timestamp" }
-    columns { name = "_run_id";         type = "string" }
-    columns { name = "_ingested_at";    type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "InventoryID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "MaterialType"
+      type = "string"
+    }
+    columns {
+      name = "Quantity"
+      type = "int"
+    }
+    columns {
+      name = "StorageLocation"
+      type = "string"
+    }
+    columns {
+      name = "LastUpdated"
+      type = "timestamp"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -207,15 +398,41 @@ resource "aws_glue_catalog_table" "cleaned_regulatory_compliance" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "ComplianceID";   type = "string" }
-    columns { name = "TagID";          type = "string" }
-    columns { name = "RegulationName"; type = "string" }
-    columns { name = "InspectionDate"; type = "date" }
-    columns { name = "Status";         type = "string" }
-    columns { name = "Inspector";      type = "string" }
-    columns { name = "_run_id";        type = "string" }
-    columns { name = "_ingested_at";   type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "ComplianceID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "RegulationName"
+      type = "string"
+    }
+    columns {
+      name = "InspectionDate"
+      type = "date"
+    }
+    columns {
+      name = "Status"
+      type = "string"
+    }
+    columns {
+      name = "Inspector"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -230,15 +447,41 @@ resource "aws_glue_catalog_table" "cleaned_financial_forecasts" {
     location      = "s3://${var.cleaned_bucket_name}/cleaned/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "ForecastID";          type = "string" }
-    columns { name = "TagID";               type = "string" }
-    columns { name = "ForecastDate";        type = "date" }
-    columns { name = "ExpectedConsumption"; type = "double" }
-    columns { name = "ExpectedRevenue";     type = "double" }
-    columns { name = "RiskFactor";          type = "double" }
-    columns { name = "_run_id";             type = "string" }
-    columns { name = "_ingested_at";        type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "ForecastID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "ForecastDate"
+      type = "date"
+    }
+    columns {
+      name = "ExpectedConsumption"
+      type = "double"
+    }
+    columns {
+      name = "ExpectedRevenue"
+      type = "double"
+    }
+    columns {
+      name = "RiskFactor"
+      type = "double"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -252,7 +495,7 @@ resource "aws_glue_catalog_table" "validated_measurements" {
   description   = "Validated measurement records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -264,13 +507,34 @@ resource "aws_glue_catalog_table" "validated_measurements" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "MeasurementID"; type = "string" }
-    columns { name = "TagID";         type = "string" }
-    columns { name = "Timestamp";     type = "timestamp" }
-    columns { name = "Value";         type = "double" }
-    columns { name = "QualityFlag";   type = "string" }
-    columns { name = "_run_id";       type = "string" }
-    columns { name = "_ingested_at";  type = "timestamp" }
+    columns {
+      name = "MeasurementID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "Timestamp"
+      type = "timestamp"
+    }
+    columns {
+      name = "Value"
+      type = "double"
+    }
+    columns {
+      name = "QualityFlag"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -280,7 +544,7 @@ resource "aws_glue_catalog_table" "validated_alarms" {
   description   = "Validated alarm records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -292,14 +556,38 @@ resource "aws_glue_catalog_table" "validated_alarms" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "AlarmID";        type = "string" }
-    columns { name = "TagID";          type = "string" }
-    columns { name = "AlarmType";      type = "string" }
-    columns { name = "ThresholdValue"; type = "double" }
-    columns { name = "Timestamp";      type = "timestamp" }
-    columns { name = "Status";         type = "string" }
-    columns { name = "_run_id";        type = "string" }
-    columns { name = "_ingested_at";   type = "timestamp" }
+    columns {
+      name = "AlarmID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "AlarmType"
+      type = "string"
+    }
+    columns {
+      name = "ThresholdValue"
+      type = "double"
+    }
+    columns {
+      name = "Timestamp"
+      type = "timestamp"
+    }
+    columns {
+      name = "Status"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -309,7 +597,7 @@ resource "aws_glue_catalog_table" "validated_maintenance" {
   description   = "Validated maintenance records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -321,14 +609,38 @@ resource "aws_glue_catalog_table" "validated_maintenance" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "MaintenanceID";   type = "string" }
-    columns { name = "TagID";           type = "string" }
-    columns { name = "WorkOrderID";     type = "string" }
-    columns { name = "MaintenanceDate"; type = "date" }
-    columns { name = "ActionTaken";     type = "string" }
-    columns { name = "Technician";      type = "string" }
-    columns { name = "_run_id";         type = "string" }
-    columns { name = "_ingested_at";    type = "timestamp" }
+    columns {
+      name = "MaintenanceID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "WorkOrderID"
+      type = "string"
+    }
+    columns {
+      name = "MaintenanceDate"
+      type = "date"
+    }
+    columns {
+      name = "ActionTaken"
+      type = "string"
+    }
+    columns {
+      name = "Technician"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -338,7 +650,7 @@ resource "aws_glue_catalog_table" "validated_events" {
   description   = "Validated event records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -350,13 +662,34 @@ resource "aws_glue_catalog_table" "validated_events" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "EventID";      type = "string" }
-    columns { name = "TagID";        type = "string" }
-    columns { name = "EventType";    type = "string" }
-    columns { name = "Timestamp";    type = "timestamp" }
-    columns { name = "Notes";        type = "string" }
-    columns { name = "_run_id";      type = "string" }
-    columns { name = "_ingested_at"; type = "timestamp" }
+    columns {
+      name = "EventID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "EventType"
+      type = "string"
+    }
+    columns {
+      name = "Timestamp"
+      type = "timestamp"
+    }
+    columns {
+      name = "Notes"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -366,7 +699,7 @@ resource "aws_glue_catalog_table" "validated_billing" {
   description   = "Validated billing records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -378,15 +711,42 @@ resource "aws_glue_catalog_table" "validated_billing" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "BillingID";         type = "string" }
-    columns { name = "TagID";             type = "string" }
-    columns { name = "CustomerID";        type = "string" }
-    columns { name = "BillingPeriod";     type = "string" }
-    columns { name = "ConsumptionVolume"; type = "double" }
-    columns { name = "TotalAmount";       type = "double" }
-    columns { name = "PaymentStatus";     type = "string" }
-    columns { name = "_run_id";           type = "string" }
-    columns { name = "_ingested_at";      type = "timestamp" }
+    columns {
+      name = "BillingID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "CustomerID"
+      type = "string"
+    }
+    columns {
+      name = "BillingPeriod"
+      type = "string"
+    }
+    columns {
+      name = "ConsumptionVolume"
+      type = "double"
+    }
+    columns {
+      name = "TotalAmount"
+      type = "double"
+    }
+    columns {
+      name = "PaymentStatus"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -396,7 +756,7 @@ resource "aws_glue_catalog_table" "validated_contracts" {
   description   = "Validated contract records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -408,15 +768,42 @@ resource "aws_glue_catalog_table" "validated_contracts" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "ContractID";        type = "string" }
-    columns { name = "CustomerID";        type = "string" }
-    columns { name = "TagID";             type = "string" }
-    columns { name = "ContractStartDate"; type = "date" }
-    columns { name = "ContractEndDate";   type = "date" }
-    columns { name = "ContractVolume";    type = "double" }
-    columns { name = "PricePerUnit";      type = "double" }
-    columns { name = "_run_id";           type = "string" }
-    columns { name = "_ingested_at";      type = "timestamp" }
+    columns {
+      name = "ContractID"
+      type = "string"
+    }
+    columns {
+      name = "CustomerID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "ContractStartDate"
+      type = "date"
+    }
+    columns {
+      name = "ContractEndDate"
+      type = "date"
+    }
+    columns {
+      name = "ContractVolume"
+      type = "double"
+    }
+    columns {
+      name = "PricePerUnit"
+      type = "double"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -426,7 +813,7 @@ resource "aws_glue_catalog_table" "validated_inventory" {
   description   = "Validated inventory records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -438,14 +825,38 @@ resource "aws_glue_catalog_table" "validated_inventory" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "InventoryID";     type = "string" }
-    columns { name = "TagID";           type = "string" }
-    columns { name = "MaterialType";    type = "string" }
-    columns { name = "Quantity";        type = "int" }
-    columns { name = "StorageLocation"; type = "string" }
-    columns { name = "LastUpdated";     type = "timestamp" }
-    columns { name = "_run_id";         type = "string" }
-    columns { name = "_ingested_at";    type = "timestamp" }
+    columns {
+      name = "InventoryID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "MaterialType"
+      type = "string"
+    }
+    columns {
+      name = "Quantity"
+      type = "int"
+    }
+    columns {
+      name = "StorageLocation"
+      type = "string"
+    }
+    columns {
+      name = "LastUpdated"
+      type = "timestamp"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -455,7 +866,7 @@ resource "aws_glue_catalog_table" "validated_regulatory_compliance" {
   description   = "Validated regulatory compliance records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -467,14 +878,38 @@ resource "aws_glue_catalog_table" "validated_regulatory_compliance" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "ComplianceID";   type = "string" }
-    columns { name = "TagID";          type = "string" }
-    columns { name = "RegulationName"; type = "string" }
-    columns { name = "InspectionDate"; type = "date" }
-    columns { name = "Status";         type = "string" }
-    columns { name = "Inspector";      type = "string" }
-    columns { name = "_run_id";        type = "string" }
-    columns { name = "_ingested_at";   type = "timestamp" }
+    columns {
+      name = "ComplianceID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "RegulationName"
+      type = "string"
+    }
+    columns {
+      name = "InspectionDate"
+      type = "date"
+    }
+    columns {
+      name = "Status"
+      type = "string"
+    }
+    columns {
+      name = "Inspector"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -484,7 +919,7 @@ resource "aws_glue_catalog_table" "validated_financial_forecasts" {
   description   = "Validated financial forecast records (Parquet)"
   table_type    = "EXTERNAL_TABLE"
   parameters = {
-    classification      = "parquet"
+    classification        = "parquet"
     "parquet.compression" = "SNAPPY"
   }
 
@@ -496,14 +931,38 @@ resource "aws_glue_catalog_table" "validated_financial_forecasts" {
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters            = { "serialization.format" = "1" }
     }
-    columns { name = "ForecastID";          type = "string" }
-    columns { name = "TagID";               type = "string" }
-    columns { name = "ForecastDate";        type = "date" }
-    columns { name = "ExpectedConsumption"; type = "double" }
-    columns { name = "ExpectedRevenue";     type = "double" }
-    columns { name = "RiskFactor";          type = "double" }
-    columns { name = "_run_id";             type = "string" }
-    columns { name = "_ingested_at";        type = "timestamp" }
+    columns {
+      name = "ForecastID"
+      type = "string"
+    }
+    columns {
+      name = "TagID"
+      type = "string"
+    }
+    columns {
+      name = "ForecastDate"
+      type = "date"
+    }
+    columns {
+      name = "ExpectedConsumption"
+      type = "double"
+    }
+    columns {
+      name = "ExpectedRevenue"
+      type = "double"
+    }
+    columns {
+      name = "RiskFactor"
+      type = "double"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }
 
@@ -522,10 +981,24 @@ resource "aws_glue_catalog_table" "quarantine_data" {
     location      = "s3://${var.bad_bucket_name}/quarantine/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-    ser_de_info { serialization_library = "org.openx.data.jsonserde.JsonSerDe" }
-    columns { name = "_source_table";      type = "string" }
-    columns { name = "_validation_errors"; type = "string" }
-    columns { name = "_run_id";            type = "string" }
-    columns { name = "_ingested_at";       type = "timestamp" }
+    ser_de_info {
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+    }
+    columns {
+      name = "_source_table"
+      type = "string"
+    }
+    columns {
+      name = "_validation_errors"
+      type = "string"
+    }
+    columns {
+      name = "_run_id"
+      type = "string"
+    }
+    columns {
+      name = "_ingested_at"
+      type = "timestamp"
+    }
   }
 }

@@ -22,7 +22,7 @@ import boto3
 from awsglue.utils import getResolvedOptions
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType
+from pyspark.sql.types import StringType, StructField, StructType
 
 from utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
 from utils.spark_helpers import add_audit_columns, create_glue_context, write_json_to_s3
@@ -66,51 +66,70 @@ def _discover_tag_ids(raw_bucket: str, run_id: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _extract_table(spark, raw_s3_path: str, table_name: str) -> tuple[DataFrame, set[str]]:
+_CORRUPT_RECORD_COL = "_corrupt_record"
+_ENVELOPE_SCHEMA = StructType([
+    StructField(_CORRUPT_RECORD_COL, StringType(), nullable=True),
+])
+
+
+def _detect_corrupt_tag_ids(spark, raw_s3_path: str) -> set[str]:
+    """Return the set of tag IDs whose JSON file cannot be parsed at all.
+
+    Reads every file in raw_s3_path using a minimal schema with
+    columnNameOfCorruptRecord so that Spark populates _corrupt_record for any
+    file it cannot parse, then extracts the tag_id from _metadata.file_path.
+    This pass runs once per job (not once per table).
+    """
+    triage_df = (
+        spark.read
+        .schema(_ENVELOPE_SCHEMA)
+        .option("mode", "PERMISSIVE")
+        .option("columnNameOfCorruptRecord", _CORRUPT_RECORD_COL)
+        .json(raw_s3_path)
+        .withColumn("_file_path", F.col("_metadata.file_path"))
+    )
+    corrupt_rows = (
+        triage_df
+        .filter(F.col(_CORRUPT_RECORD_COL).isNotNull())
+        .select("_file_path")
+        .distinct()
+        .collect()
+    )
+    return {
+        os.path.basename(row._file_path).replace(".json", "")
+        for row in corrupt_rows
+        if row._file_path
+    }
+
+
+def _extract_table(spark, raw_s3_path: str, table_name: str) -> DataFrame:
     """Read one domain table from all raw TagResponse JSON files.
 
-    Returns (clean_envelope_df, corrupt_tag_ids).
-
-    PERMISSIVE mode lets Spark parse what it can. Rows where the top-level
-    envelope is unreadable land in _corrupt_record. We extract the tag_id
-    from _metadata.file_path before splitting good/bad envelopes so the
-    metadata column (only available on the raw read) is captured immediately.
+    Reads with schema inference (no corrupt-record handling needed here —
+    corrupt files were already identified by _detect_corrupt_tag_ids and will
+    produce rows with null domain fields, which are dropped by TagID filter).
+    Returns a DataFrame with the domain table's columns cast to their target types.
     """
     schema = TABLE_SCHEMAS[table_name]
     is_list = table_name in LIST_TABLES
 
-    raw_df = (
-        spark.read
-        .option("mode", "PERMISSIVE")
-        .json(raw_s3_path)
-        .withColumn("_file_path", F.col("_metadata.file_path"))
-    )
+    raw_df = spark.read.option("mode", "PERMISSIVE").json(raw_s3_path)
 
-    # Detect and recover corrupt envelopes before any further processing
-    corrupt_df = raw_df.filter(F.col("_corrupt_record").isNotNull())
-    corrupt_tag_ids: set[str] = {
-        os.path.basename(row._file_path).replace(".json", "")
-        for row in corrupt_df.select("_file_path").distinct().collect()
-        if row._file_path
-    }
-
-    good_df = raw_df.filter(F.col("_corrupt_record").isNull())
-
-    if table_name not in good_df.columns:
+    if table_name not in raw_df.columns:
         logger.warning(
             "Column not found in raw data — returning empty DataFrame",
             extra={"run_id": None, "table": table_name},
         )
-        return spark.createDataFrame([], schema), corrupt_tag_ids
+        return spark.createDataFrame([], schema)
 
     if is_list:
         exploded = (
-            good_df
+            raw_df
             .select(F.explode(F.col(table_name)).alias("_record"))
             .select("_record.*")
         )
     else:
-        exploded = good_df.select(f"{table_name}.*")
+        exploded = raw_df.select(f"{table_name}.*")
 
     select_exprs = []
     for field in schema.fields:
@@ -119,7 +138,7 @@ def _extract_table(spark, raw_s3_path: str, table_name: str) -> tuple[DataFrame,
         else:
             select_exprs.append(F.lit(None).cast(field.dataType).alias(field.name))
 
-    return exploded.select(select_exprs), corrupt_tag_ids
+    return exploded.select(select_exprs)
 
 
 # ---------------------------------------------------------------------------
@@ -209,17 +228,23 @@ def main() -> None:
     raw_s3_path = f"s3://{raw_bucket}/raw/{run_id}/"
     all_tag_ids: set[str] = set(_discover_tag_ids(raw_bucket, run_id))
 
+    # Single triage pass — detect corrupt JSON envelopes across all files once.
+    corrupt_tag_ids: set[str] = _detect_corrupt_tag_ids(spark, raw_s3_path)
+    if corrupt_tag_ids:
+        logger.warning(
+            "Corrupt JSON envelopes detected — affected tags will be marked FAILED",
+            extra={"run_id": run_id, "corrupt_tag_count": len(corrupt_tag_ids)},
+        )
+
     # Accumulated across all tables:
     # { tag_id: { "extracted": int, "transformed": int } }
     tag_stats: dict[str, dict] = {}
-    corrupt_tag_ids: set[str] = set()
     total_records = 0
 
     for table_name in TABLE_SCHEMAS:
         table_start = time.perf_counter()
         try:
-            pre_df, table_corrupt_ids = _extract_table(spark, raw_s3_path, table_name)
-            corrupt_tag_ids |= table_corrupt_ids
+            pre_df = _extract_table(spark, raw_s3_path, table_name)
 
             # Count extracted rows per tag before null-PK drop
             _accumulate_tag_counts(pre_df, "extracted", tag_stats)
@@ -242,7 +267,6 @@ def main() -> None:
                     "run_id": run_id,
                     "table": table_name,
                     "records": count,
-                    "corrupt_tags_detected": len(table_corrupt_ids),
                     "duration_ms": duration_ms,
                 },
             )

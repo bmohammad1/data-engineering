@@ -135,6 +135,18 @@ data "aws_iam_policy_document" "glue" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [var.secret_arn]
   }
+
+  # DynamoDB: read and write run metadata and tag records
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:UpdateItem",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:Query",
+    ]
+    resources = [var.dynamodb_table_arn]
+  }
 }
 
 # =============================================================================

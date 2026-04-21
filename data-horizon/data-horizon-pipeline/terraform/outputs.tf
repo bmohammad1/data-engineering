@@ -20,6 +20,11 @@ output "s3_orchestration_bucket_name" {
   value       = module.s3.orchestration_bucket_name
 }
 
+output "s3_scripts_bucket_name" {
+  description = "S3 bucket for Glue scripts and utils zip"
+  value       = module.s3.scripts_bucket_name
+}
+
 # --- DynamoDB ---
 
 output "dynamodb_table_name" {

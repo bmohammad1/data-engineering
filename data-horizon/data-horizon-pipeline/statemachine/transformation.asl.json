@@ -24,7 +24,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.error",
-          "Next": "NotifyTransformFailure"
+          "Next": "TransformationFailed"
         }
       ],
       "ResultPath": null,
@@ -52,7 +52,7 @@
         {
           "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.error",
-          "Next": "NotifyValidationFailure"
+          "Next": "ValidationFailed"
         }
       ],
       "ResultPath": null,
@@ -65,28 +65,6 @@
         "status": "SUCCESS"
       },
       "End": true
-    },
-    "NotifyTransformFailure": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sns:publish",
-      "Parameters": {
-        "TopicArn": "${sns_topic_arn}",
-        "Subject": "Data Horizon — Transform Job Failed",
-        "Message.$": "States.Format('Transform Glue job failed for run: {} | Error: {} | Cause: {}', $.run_id, $.error.Error, $.error.Cause)"
-      },
-      "ResultPath": null,
-      "Next": "TransformationFailed"
-    },
-    "NotifyValidationFailure": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sns:publish",
-      "Parameters": {
-        "TopicArn": "${sns_topic_arn}",
-        "Subject": "Data Horizon — Validation Job Failed",
-        "Message.$": "States.Format('Validation Glue job failed for run: {} | Error: {} | Cause: {}', $.run_id, $.error.Error, $.error.Cause)"
-      },
-      "ResultPath": null,
-      "Next": "ValidationFailed"
     },
     "TransformationFailed": {
       "Type": "Fail",

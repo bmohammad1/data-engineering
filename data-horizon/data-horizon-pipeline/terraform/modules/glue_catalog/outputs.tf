@@ -8,12 +8,12 @@ output "raw_table_name" {
   value       = aws_glue_catalog_table.raw_data.name
 }
 
-output "cleaned_table_name" {
-  description = "Glue Catalog cleaned data table name"
-  value       = aws_glue_catalog_table.cleaned_data.name
+output "cleaned_tables_prefix" {
+  description = "Glue Catalog name prefix shared by all cleaned tables (cleaned_<table>)"
+  value       = "cleaned"
 }
 
-output "validated_table_name" {
-  description = "Glue Catalog validated data table name"
-  value       = aws_glue_catalog_table.validated_data.name
+output "validated_tables_prefix" {
+  description = "Glue Catalog name prefix shared by all validated tables (validated_<table>)"
+  value       = "validated"
 }
