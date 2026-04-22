@@ -20,6 +20,11 @@ def create_glue_context(job_name: str, args: dict) -> tuple[GlueContext, SparkSe
     the SparkSession, and the Job handle.
     """
     sc = SparkContext.getOrCreate()
+    # Prevent Hadoop FileOutputCommitter from writing empty _$folder$ marker
+    # objects into S3 output prefixes on every write.
+    sc._jsc.hadoopConfiguration().set(
+        "mapreduce.fileoutputcommitter.marksuccessfuljobs", "false"
+    )
     glue_ctx = GlueContext(sc)
     spark = glue_ctx.spark_session
 
