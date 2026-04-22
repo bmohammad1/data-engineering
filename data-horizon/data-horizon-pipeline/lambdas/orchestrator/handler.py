@@ -15,7 +15,7 @@ from shared.exceptions import PermanentError, RetryableError
 from shared.logger import configure_logging, run_id_ctx
 
 from config_loader import load_pipeline_config, load_tags_from_s3
-from dynamodb_writer import write_run_metadata, write_tag_records
+from dynamodb_writer import write_config_stage_end, write_run_metadata, write_tag_records
 from map_state_generator import generate_map_state_input
 
 configure_logging()
@@ -110,6 +110,8 @@ def handler(event: dict, context: object) -> dict:
         )
 
     duration_ms = round((time.perf_counter() - start) * 1_000, 2)
+    write_config_stage_end(table_name, run_id, int(duration_ms))
+
     logger.info(
         "config_loader completed",
         extra={

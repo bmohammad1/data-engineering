@@ -27,6 +27,7 @@ resource "aws_sfn_state_machine" "data_extractor" {
     map_state_processor_lambda_arn = var.map_state_processor_lambda_arn
     orchestration_bucket_name      = var.orchestration_bucket_name
     extraction_failures_queue_url  = var.extraction_failures_queue_url
+    pipeline_state_table           = var.pipeline_state_table
   })
 
   tags = merge(var.tags, {

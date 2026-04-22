@@ -137,3 +137,31 @@ def write_tag_records(
         "Tag records written",
         extra={"run_id": run_id, "tag_count": written},
     )
+
+
+def write_config_stage_end(table_name: str, run_id: str, duration_ms: int) -> None:
+    """Record Child1 completion time and duration on the META item."""
+    dynamodb = get_client("dynamodb")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    try:
+        dynamodb.update_item(
+            TableName=table_name,
+            Key={"PK": {"S": f"{PK_RUN_PREFIX}{run_id}"}, "SK": {"S": SK_META}},
+            UpdateExpression="SET config_end_time = :t, config_duration_ms = :d",
+            ExpressionAttributeValues={
+                ":t": {"S": now_iso},
+                ":d": {"N": str(duration_ms)},
+            },
+        )
+    except ClientError as exc:
+        raise DynamoDBError(
+            f"Failed to write config stage end for {run_id}: {exc}",
+            service="dynamodb",
+            run_id=run_id,
+        )
+
+    logger.debug(
+        "Config stage end recorded",
+        extra={"run_id": run_id, "config_duration_ms": duration_ms},
+    )

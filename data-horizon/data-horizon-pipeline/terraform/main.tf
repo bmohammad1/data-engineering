@@ -167,6 +167,7 @@ module "step_function" {
   map_state_concurrency         = var.map_state_concurrency
   orchestration_bucket_name     = module.s3.orchestration_bucket_name
   extraction_failures_queue_url = module.sqs.extraction_failures_queue_url
+  pipeline_state_table          = module.dynamodb.table_name
   statemachine_dir              = "${path.module}/../statemachine"
   tags                          = local.common_tags
 }

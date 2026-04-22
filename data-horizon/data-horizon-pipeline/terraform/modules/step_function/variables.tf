@@ -73,6 +73,11 @@ variable "extraction_failures_queue_url" {
   type        = string
 }
 
+variable "pipeline_state_table" {
+  description = "DynamoDB table name for pipeline state"
+  type        = string
+}
+
 variable "statemachine_dir" {
   description = "Directory containing ASL JSON files"
   type        = string

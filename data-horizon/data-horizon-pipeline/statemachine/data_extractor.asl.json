@@ -88,10 +88,20 @@
       "Next": "DataExtractorSuccess"
     },
     "DataExtractorSuccess": {
-      "Type": "Pass",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
       "Parameters": {
-        "run_id.$": "$.run_id"
+        "TableName": "${pipeline_state_table}",
+        "Key": {
+          "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
+          "SK": { "S": "META" }
+        },
+        "UpdateExpression": "SET extraction_end_time = :t",
+        "ExpressionAttributeValues": {
+          ":t": { "S.$": "$$.State.EnteredTime" }
+        }
       },
+      "ResultPath": null,
       "End": true
     },
     "DataExtractorFailed": {

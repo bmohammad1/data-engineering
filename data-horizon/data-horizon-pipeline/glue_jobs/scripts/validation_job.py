@@ -34,6 +34,7 @@ from utils.spark_helpers import (
 )
 from utils.validation_rules import apply_validation
 from utils.dynamodb_updater import (
+    fetch_transform_succeeded_tags,
     update_run_validate_status,
     update_tag_validate_status,
 )
@@ -91,7 +92,11 @@ def main() -> None:
 
     # { tag_id: {"valid": int, "invalid": int} } — accumulated across all tables
     tag_counts: dict[str, dict] = {}
-    all_tag_ids: set[str] = set()
+    all_tag_ids: set[str] = fetch_transform_succeeded_tags(table_name_dynamo, run_id)
+    logger.info(
+        "Tags loaded from DynamoDB",
+        extra={"run_id": run_id, "tag_count": len(all_tag_ids)},
+    )
 
     for table_name, schema in TABLE_SCHEMAS.items():
         table_start = time.perf_counter()
@@ -129,7 +134,6 @@ def main() -> None:
                 for row in valid_df.groupBy("TagID").count().collect():
                     tid = row.TagID
                     if tid:
-                        all_tag_ids.add(tid)
                         tag_counts.setdefault(tid, {"valid": 0, "invalid": 0})
                         tag_counts[tid]["valid"] += row["count"]
 
@@ -137,7 +141,6 @@ def main() -> None:
                 for row in invalid_df.groupBy("TagID").count().collect():
                     tid = row.TagID
                     if tid:
-                        all_tag_ids.add(tid)
                         tag_counts.setdefault(tid, {"valid": 0, "invalid": 0})
                         tag_counts[tid]["invalid"] += row["count"]
 
@@ -207,6 +210,7 @@ def main() -> None:
         validate_tags_failed=tags_failed,
         records_validated=total_valid,
         records_rejected=total_quarantined,
+        duration_ms=int(total_duration_ms),
     )
 
     logger.info(

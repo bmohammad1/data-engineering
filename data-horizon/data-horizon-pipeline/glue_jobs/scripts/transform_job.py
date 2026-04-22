@@ -372,6 +372,7 @@ def main() -> None:
         transform_tags_failed=len(tags_failed),
         records_transformed=total_records,
         records_dropped=total_dropped,
+        duration_ms=int(total_duration_ms),
     )
 
     logger.info(

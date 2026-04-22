@@ -246,6 +246,13 @@ data "aws_iam_policy_document" "step_functions" {
     resources = ["*"]
   }
 
+  # DynamoDB: write stage timing to META item via SDK integration
+  statement {
+    effect    = "Allow"
+    actions   = ["dynamodb:UpdateItem"]
+    resources = [var.dynamodb_table_arn]
+  }
+
   # SQS: send failed items to extraction failures queue
   statement {
     effect    = "Allow"

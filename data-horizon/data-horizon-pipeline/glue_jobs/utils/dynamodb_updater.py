@@ -13,6 +13,7 @@ Per-tag items carry record counts so operators can track data volume per tag.
 """
 
 import logging
+from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
 
@@ -21,6 +22,56 @@ from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX, STATUS_RUNNI
 from shared.exceptions import DynamoDBError
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Per-run tag fetch
+# ---------------------------------------------------------------------------
+
+
+def fetch_transform_succeeded_tags(table_name: str, run_id: str) -> set[str]:
+    """Return tag IDs that completed the transform stage successfully.
+
+    Queries all TAG items for the given run and returns only those whose
+    overall_status is SUCCESS. Used by the validation job to seed its tag
+    universe from DynamoDB rather than deriving it from S3 file contents.
+    """
+    dynamodb = get_client("dynamodb")
+    pk = f"{PK_RUN_PREFIX}{run_id}"
+    tag_ids: set[str] = set()
+    kwargs: dict = {
+        "TableName": table_name,
+        "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
+        "FilterExpression": "overall_status = :success",
+        "ExpressionAttributeValues": {
+            ":pk":        {"S": pk},
+            ":sk_prefix": {"S": SK_TAG_PREFIX},
+            ":success":   {"S": "SUCCESS"},
+        },
+    }
+
+    try:
+        while True:
+            response = dynamodb.query(**kwargs)
+            for item in response.get("Items", []):
+                sk_value = item["SK"]["S"]
+                tag_ids.add(sk_value.removeprefix(SK_TAG_PREFIX))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            kwargs["ExclusiveStartKey"] = last_key
+    except ClientError as exc:
+        raise DynamoDBError(
+            f"Failed to fetch transform-succeeded tags for run {run_id}: {exc}",
+            service="dynamodb",
+            run_id=run_id,
+        ) from exc
+
+    logger.debug(
+        "Fetched transform-succeeded tags from DynamoDB",
+        extra={"run_id": run_id, "tag_count": len(tag_ids)},
+    )
+    return tag_ids
 
 
 # ---------------------------------------------------------------------------
@@ -181,31 +232,38 @@ def update_run_transform_status(
     transform_tags_failed: int = 0,
     records_transformed: int = 0,
     records_dropped: int = 0,
+    duration_ms: int = 0,
 ) -> None:
     """Update the RUN META item with transform stage aggregate outcomes."""
     dynamodb = get_client("dynamodb")
     pk = f"{PK_RUN_PREFIX}{run_id}"
 
     overall_update = "" if status == STATUS_RUNNING else ", overall_status = :status"
+    set_clause = (
+        f"SET transform_status = :status{overall_update}"
+        ", transform_tags_success = :tags_ok"
+        ", transform_tags_failed = :tags_fail"
+        ", transform_records_written = :written"
+        ", transform_records_dropped = :dropped"
+    )
+    expression_values = {
+        ":status":    {"S": status},
+        ":tags_ok":   {"N": str(transform_tags_success)},
+        ":tags_fail": {"N": str(transform_tags_failed)},
+        ":written":   {"N": str(records_transformed)},
+        ":dropped":   {"N": str(records_dropped)},
+    }
+
+    if duration_ms:
+        set_clause += ", transform_duration_ms = :dur_ms"
+        expression_values[":dur_ms"] = {"N": str(duration_ms)}
 
     try:
         dynamodb.update_item(
             TableName=table_name,
             Key={"PK": {"S": pk}, "SK": {"S": SK_META}},
-            UpdateExpression=(
-                f"SET transform_status = :status{overall_update}"
-                ", transform_tags_success = :tags_ok"
-                ", transform_tags_failed = :tags_fail"
-                ", transform_records_written = :written"
-                ", transform_records_dropped = :dropped"
-            ),
-            ExpressionAttributeValues={
-                ":status":    {"S": status},
-                ":tags_ok":   {"N": str(transform_tags_success)},
-                ":tags_fail": {"N": str(transform_tags_failed)},
-                ":written":   {"N": str(records_transformed)},
-                ":dropped":   {"N": str(records_dropped)},
-            },
+            UpdateExpression=set_clause,
+            ExpressionAttributeValues=expression_values,
         )
     except ClientError as exc:
         raise DynamoDBError(
@@ -223,6 +281,7 @@ def update_run_transform_status(
             "transform_tags_failed": transform_tags_failed,
             "records_transformed": records_transformed,
             "records_dropped": records_dropped,
+            "transform_duration_ms": duration_ms,
         },
     )
 
@@ -235,31 +294,43 @@ def update_run_validate_status(
     validate_tags_failed: int = 0,
     records_validated: int = 0,
     records_rejected: int = 0,
+    duration_ms: int = 0,
 ) -> None:
     """Update the RUN META item with validation stage aggregate outcomes."""
     dynamodb = get_client("dynamodb")
     pk = f"{PK_RUN_PREFIX}{run_id}"
 
     overall_update = "" if status == STATUS_RUNNING else ", overall_status = :status"
+    set_clause = (
+        f"SET validate_status = :status{overall_update}"
+        ", validate_tags_success = :tags_ok"
+        ", validate_tags_failed = :tags_fail"
+        ", validate_records_passed = :validated"
+        ", validate_records_quarantined = :rejected"
+    )
+    expression_values = {
+        ":status":    {"S": status},
+        ":tags_ok":   {"N": str(validate_tags_success)},
+        ":tags_fail": {"N": str(validate_tags_failed)},
+        ":validated": {"N": str(records_validated)},
+        ":rejected":  {"N": str(records_rejected)},
+    }
+
+    if status != STATUS_RUNNING:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        set_clause += ", end_time = :end_time"
+        expression_values[":end_time"] = {"S": now_iso}
+
+    if duration_ms:
+        set_clause += ", validate_duration_ms = :dur_ms"
+        expression_values[":dur_ms"] = {"N": str(duration_ms)}
 
     try:
         dynamodb.update_item(
             TableName=table_name,
             Key={"PK": {"S": pk}, "SK": {"S": SK_META}},
-            UpdateExpression=(
-                f"SET validate_status = :status{overall_update}"
-                ", validate_tags_success = :tags_ok"
-                ", validate_tags_failed = :tags_fail"
-                ", validate_records_passed = :validated"
-                ", validate_records_quarantined = :rejected"
-            ),
-            ExpressionAttributeValues={
-                ":status":    {"S": status},
-                ":tags_ok":   {"N": str(validate_tags_success)},
-                ":tags_fail": {"N": str(validate_tags_failed)},
-                ":validated": {"N": str(records_validated)},
-                ":rejected":  {"N": str(records_rejected)},
-            },
+            UpdateExpression=set_clause,
+            ExpressionAttributeValues=expression_values,
         )
     except ClientError as exc:
         raise DynamoDBError(
@@ -277,5 +348,6 @@ def update_run_validate_status(
             "validate_tags_failed": validate_tags_failed,
             "records_validated": records_validated,
             "records_rejected": records_rejected,
+            "validate_duration_ms": duration_ms,
         },
     )
