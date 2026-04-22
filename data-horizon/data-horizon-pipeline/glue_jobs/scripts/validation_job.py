@@ -72,7 +72,7 @@ def main() -> None:
     run_id_ctx.set(run_id)
     job_start = time.perf_counter()
 
-    glue_ctx, spark, job = create_glue_context(args["JOB_NAME"], args)
+    glue_ctx, _, job = create_glue_context(args["JOB_NAME"], args)
 
     logger.info(
         "Validation job started",
@@ -98,7 +98,7 @@ def main() -> None:
         cleaned_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
 
         try:
-            df = read_json_from_s3(spark, cleaned_path, schema)
+            df = read_json_from_s3(glue_ctx, cleaned_path, schema)
             valid_df, invalid_df = apply_validation(df, table_name)
 
             valid_count = valid_df.count()

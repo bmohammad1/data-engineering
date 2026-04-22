@@ -1,9 +1,9 @@
 """Common Spark / Glue utilities shared by transform and validation jobs."""
 
 import logging
-import sys
 
 from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
 from awsglue.job import Job
 from pyspark.context import SparkContext
 from pyspark.sql import DataFrame, SparkSession
@@ -29,19 +29,38 @@ def create_glue_context(job_name: str, args: dict) -> tuple[GlueContext, SparkSe
     return glue_ctx, spark, job
 
 
-def read_json_from_s3(spark: SparkSession, s3_path: str, schema: StructType) -> DataFrame:
-    """Read JSON files from an S3 prefix using an explicit schema.
+def read_json_from_s3(
+    glue_ctx: GlueContext,
+    s3_path: str,
+    schema: StructType,
+) -> DataFrame:
+    """Read JSON files from an S3 prefix via the Glue DynamicFrame API.
 
-    Enforcing the schema at read time prevents silent type coercions and
-    ensures downstream casts are predictable.
+    Using create_dynamic_frame.from_options avoids the Spark FileSystem cache
+    stale-listing issue that causes 'No such file' errors when reading S3
+    paths written moments earlier by the same job session.
+    The DynamicFrame is converted to a Spark DataFrame and columns are cast
+    to the target schema types so downstream validation rules get correct types.
     """
-    return (
-        spark.read
-        .schema(schema)
-        .option("mode", "PERMISSIVE")
-        .option("columnNameOfCorruptRecord", "_corrupt_record")
-        .json(s3_path)
+    dyf = glue_ctx.create_dynamic_frame.from_options(
+        connection_type="s3",
+        connection_options={"paths": [s3_path], "recurse": True},
+        format="json",
     )
+    df = dyf.toDF()
+
+    # Cast each column to the declared schema type; add as null if missing.
+    select_exprs = []
+    for field in schema.fields:
+        if field.name in df.columns:
+            select_exprs.append(
+                F.col(field.name).cast(field.dataType).alias(field.name)
+            )
+        else:
+            select_exprs.append(
+                F.lit(None).cast(field.dataType).alias(field.name)
+            )
+    return df.select(select_exprs)
 
 
 def write_json_to_s3(df: DataFrame, s3_path: str) -> None:

@@ -67,7 +67,11 @@ def _discover_tag_ids(raw_bucket: str, run_id: str) -> list[str]:
 
 
 _CORRUPT_RECORD_COL = "_corrupt_record"
-_ENVELOPE_SCHEMA = StructType([
+# Must include at least one real field alongside _corrupt_record — Spark 2.3+
+# disallows queries whose schema contains only the corrupt-record column.
+# "tag" is always present in every valid raw envelope so it serves as the anchor.
+_TRIAGE_SCHEMA = StructType([
+    StructField("tag", StringType(), nullable=True),
     StructField(_CORRUPT_RECORD_COL, StringType(), nullable=True),
 ])
 
@@ -75,18 +79,19 @@ _ENVELOPE_SCHEMA = StructType([
 def _detect_corrupt_tag_ids(spark, raw_s3_path: str) -> set[str]:
     """Return the set of tag IDs whose JSON file cannot be parsed at all.
 
-    Reads every file in raw_s3_path using a minimal schema with
-    columnNameOfCorruptRecord so that Spark populates _corrupt_record for any
-    file it cannot parse, then extracts the tag_id from _metadata.file_path.
-    This pass runs once per job (not once per table).
+    Reads every file in raw_s3_path with a minimal two-field schema so that
+    Spark populates _corrupt_record for any unparseable file. The DataFrame is
+    cached before filtering because Spark forbids filtering on _corrupt_record
+    alone without materialising the plan first.
     """
     triage_df = (
         spark.read
-        .schema(_ENVELOPE_SCHEMA)
+        .schema(_TRIAGE_SCHEMA)
         .option("mode", "PERMISSIVE")
         .option("columnNameOfCorruptRecord", _CORRUPT_RECORD_COL)
         .json(raw_s3_path)
         .withColumn("_file_path", F.col("_metadata.file_path"))
+        .cache()
     )
     corrupt_rows = (
         triage_df
@@ -95,6 +100,7 @@ def _detect_corrupt_tag_ids(spark, raw_s3_path: str) -> set[str]:
         .distinct()
         .collect()
     )
+    triage_df.unpersist()
     return {
         os.path.basename(row._file_path).replace(".json", "")
         for row in corrupt_rows

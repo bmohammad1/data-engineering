@@ -107,12 +107,26 @@ data "aws_iam_policy_document" "glue" {
   }
 
   statement {
-    effect  = "Allow"
-    actions = ["s3:PutObject"]
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
     resources = [
       "${var.s3_cleaned_bucket_arn}/*",
       "${var.s3_validated_bucket_arn}/*",
       "${var.s3_bad_bucket_arn}/*",
+    ]
+  }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [
+      var.s3_cleaned_bucket_arn,
+      var.s3_validated_bucket_arn,
+      var.s3_bad_bucket_arn,
     ]
   }
 
