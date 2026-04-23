@@ -25,7 +25,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
 from utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
-from utils.spark_helpers import add_audit_columns, create_glue_context, write_json_to_s3
+from utils.spark_helpers import add_audit_columns, create_glue_context, write_parquet_to_s3
 from utils.dynamodb_updater import (
     update_run_transform_status,
     update_tag_transform_status,
@@ -108,43 +108,33 @@ def _detect_corrupt_tag_ids(spark, raw_s3_path: str) -> set[str]:
     }
 
 
-def _extract_table(spark, raw_s3_path: str, table_name: str) -> DataFrame:
-    """Read one domain table from all raw TagResponse JSON files.
+def _extract_table(raw_df: DataFrame, table_name: str) -> DataFrame:
+    """Extract one domain table from the already-loaded raw DataFrame.
 
-    Reads with schema inference (no corrupt-record handling needed here —
-    corrupt files were already identified by _detect_corrupt_tag_ids and will
-    produce rows with null domain fields, which are dropped by TagID filter).
-    Returns a DataFrame with the domain table's columns cast to their target types.
+    Accepts a pre-read DataFrame so the caller can read S3 once and reuse it
+    across all tables. Returns a DataFrame with the domain table's columns cast
+    to their target types.
     """
     schema = TABLE_SCHEMAS[table_name]
-    is_list = table_name in LIST_TABLES
-
-    raw_df = spark.read.option("mode", "PERMISSIVE").json(raw_s3_path)
 
     if table_name not in raw_df.columns:
         logger.warning(
             "Column not found in raw data — returning empty DataFrame",
             extra={"run_id": None, "table": table_name},
         )
-        return spark.createDataFrame([], schema)
+        return raw_df.sparkSession.createDataFrame([], schema)
 
-    if is_list:
-        exploded = (
-            raw_df
-            .select(F.explode(F.col(table_name)).alias("_record"))
-            .select("_record.*")
-        )
+    if table_name in LIST_TABLES:
+        flat_df = raw_df.select(F.explode(F.col(table_name)).alias("_record")).select("_record.*")
     else:
-        exploded = raw_df.select(f"{table_name}.*")
+        flat_df = raw_df.select(f"{table_name}.*")
 
-    select_exprs = []
-    for field in schema.fields:
-        if field.name in exploded.columns:
-            select_exprs.append(F.col(field.name).cast(field.dataType).alias(field.name))
-        else:
-            select_exprs.append(F.lit(None).cast(field.dataType).alias(field.name))
-
-    return exploded.select(select_exprs)
+    select_exprs = [
+        F.col(f.name).cast(f.dataType).alias(f.name) if f.name in flat_df.columns
+        else F.lit(None).cast(f.dataType).alias(f.name)
+        for f in schema.fields
+    ]
+    return flat_df.select(select_exprs)
 
 
 # ---------------------------------------------------------------------------
@@ -242,10 +232,12 @@ def main() -> None:
     tag_stats: dict[str, dict] = {}
     total_records = 0
 
+    raw_df = spark.read.option("mode", "PERMISSIVE").json(raw_s3_path).cache()
+
     for table_name in TABLE_SCHEMAS:
         table_start = time.perf_counter()
         try:
-            pre_df = _extract_table(spark, raw_s3_path, table_name)
+            pre_df = _extract_table(raw_df, table_name)
 
             # Count extracted rows per tag before null-PK drop
             _accumulate_tag_counts(pre_df, "extracted", tag_stats)
@@ -259,7 +251,7 @@ def main() -> None:
             total_records += count
 
             cleaned_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
-            write_json_to_s3(transformed_df, cleaned_path)
+            write_parquet_to_s3(transformed_df, cleaned_path)
 
             duration_ms = round((time.perf_counter() - table_start) * 1_000, 2)
             logger.info(
@@ -277,6 +269,8 @@ def main() -> None:
                 extra={"run_id": run_id, "table": table_name},
             )
             raise
+
+    raw_df.unpersist()
 
     # Tags that had no corrupt envelope but still produced zero transformed rows
     tags_with_output = {tid for tid, s in tag_stats.items() if s["transformed"] > 0}

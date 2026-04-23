@@ -77,6 +77,16 @@ def write_json_to_s3(df: DataFrame, s3_path: str) -> None:
     )
 
 
+def write_parquet_to_s3(df: DataFrame, s3_path: str) -> None:
+    """Write a DataFrame to S3 as snappy-compressed Parquet, overwriting any existing data."""
+    (
+        df.write
+        .mode("overwrite")
+        .option("compression", "snappy")
+        .parquet(s3_path)
+    )
+
+
 def write_parquet_to_catalog(
     glue_ctx: GlueContext,
     df: DataFrame,
