@@ -39,7 +39,7 @@ from utils.dynamodb_updater import (
     update_tag_validate_status,
 )
 
-from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS
+from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS, load_ssm_config
 from shared.logger import configure_logging, run_id_ctx
 
 configure_logging()
@@ -53,22 +53,15 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Glue job entry point."""
-    args = getResolvedOptions(sys.argv, [
-        "JOB_NAME",
-        "run_id",
-        "CLEANED_BUCKET",
-        "VALIDATED_BUCKET",
-        "QUARANTINE_BUCKET",
-        "PIPELINE_STATE_TABLE",
-        "GLUE_DATABASE",
-    ])
+    args = getResolvedOptions(sys.argv, ["JOB_NAME", "run_id", "ENVIRONMENT"])
 
     run_id = args["run_id"]
-    cleaned_bucket = args["CLEANED_BUCKET"]
-    validated_bucket = args["VALIDATED_BUCKET"]
-    quarantine_bucket = args["QUARANTINE_BUCKET"]
-    table_name_dynamo = args["PIPELINE_STATE_TABLE"]
-    glue_database = args["GLUE_DATABASE"]
+    ssm = load_ssm_config(args["ENVIRONMENT"])
+    cleaned_bucket = ssm["cleaned-bucket-name"]
+    validated_bucket = ssm["validated-bucket-name"]
+    quarantine_bucket = ssm["quarantine-bucket-name"]
+    table_name_dynamo = ssm["pipeline-state-table"]
+    glue_database = ssm["glue-database"]
 
     run_id_ctx.set(run_id)
     job_start = time.perf_counter()

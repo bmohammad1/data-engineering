@@ -14,19 +14,13 @@ resource "aws_lambda_function" "config_loader" {
   runtime          = "python3.12"
   filename         = local.config_loader_zip
   source_code_hash = filebase64sha256(local.config_loader_zip)
-  memory_size      = var.memory_size
-  timeout          = var.timeout
+  memory_size      = var.config_loader_memory
+  timeout          = var.config_loader_timeout
   architectures    = ["x86_64"]
 
   environment {
     variables = {
-      SECRET_NAME               = var.secret_name
-      ENVIRONMENT               = var.environment
-      PIPELINE_STATE_TABLE      = var.pipeline_state_table
-      CONFIG_BUCKET_NAME        = var.config_bucket_name
-      ORCHESTRATION_BUCKET_NAME = var.orchestration_bucket_name
-      SOURCE_API_BASE_URL       = var.source_api_base_url
-      MAP_STATE_CONCURRENCY     = tostring(var.map_state_concurrency)
+      ENVIRONMENT = var.environment
     }
   }
 
@@ -53,16 +47,13 @@ resource "aws_lambda_function" "map_state_processor" {
   runtime          = "python3.12"
   filename         = local.map_state_processor_zip
   source_code_hash = filebase64sha256(local.map_state_processor_zip)
-  memory_size      = var.memory_size
-  timeout          = var.timeout
+  memory_size      = var.map_processor_memory
+  timeout          = var.map_processor_timeout
   architectures    = ["x86_64"]
 
   environment {
     variables = {
-      SECRET_NAME          = var.secret_name
-      ENVIRONMENT          = var.environment
-      PIPELINE_STATE_TABLE = var.pipeline_state_table
-      RAW_BUCKET_NAME      = var.raw_bucket_name
+      ENVIRONMENT = var.environment
     }
   }
 

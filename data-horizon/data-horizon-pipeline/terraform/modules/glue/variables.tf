@@ -13,44 +13,45 @@ variable "scripts_bucket_name" {
   type        = string
 }
 
-variable "secret_name" {
-  description = "Secrets Manager secret name for runtime config"
-  type        = string
-}
-
-variable "raw_bucket_name" {
-  description = "S3 bucket name for raw API response data"
-  type        = string
-}
-
-variable "cleaned_bucket_name" {
-  description = "S3 bucket name for transformed/cleaned data"
-  type        = string
-}
-
-variable "validated_bucket_name" {
-  description = "S3 bucket name for validated Parquet data"
-  type        = string
-}
-
-variable "quarantine_bucket_name" {
-  description = "S3 bucket name for quarantined invalid records (bad bucket)"
-  type        = string
-}
-
-variable "pipeline_state_table" {
-  description = "DynamoDB table name for pipeline audit state"
-  type        = string
-}
-
-variable "glue_database" {
-  description = "Glue Data Catalog database name"
-  type        = string
-}
-
 variable "environment" {
   description = "Deployment environment (dev, staging, prod)"
   type        = string
+}
+
+variable "transform_workers" {
+  description = "Number of workers for the transform Glue job"
+  type        = number
+  default     = 2
+}
+
+variable "transform_worker_type" {
+  description = "Worker type for the transform Glue job (G.1X, G.2X, G.4X, G.8X)"
+  type        = string
+  default     = "G.1X"
+}
+
+variable "transform_timeout" {
+  description = "Timeout in minutes for the transform Glue job"
+  type        = number
+  default     = 60
+}
+
+variable "validation_workers" {
+  description = "Number of workers for the validation Glue job"
+  type        = number
+  default     = 2
+}
+
+variable "validation_worker_type" {
+  description = "Worker type for the validation Glue job (G.1X, G.2X, G.4X, G.8X)"
+  type        = string
+  default     = "G.1X"
+}
+
+variable "validation_timeout" {
+  description = "Timeout in minutes for the validation Glue job"
+  type        = number
+  default     = 60
 }
 
 variable "tags" {

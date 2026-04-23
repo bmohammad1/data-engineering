@@ -8,16 +8,26 @@ import pytest
 from moto import mock_aws
 
 REGION = "us-east-1"
+ENVIRONMENT = "test"
+SSM_PATH = f"/data-horizon/{ENVIRONMENT}"
+
 TABLE_NAME = "PipelineAudit"
 RAW_BUCKET = "test-raw-bucket"
-SECRET_NAME = "test-pipeline-config"
 API_TOKEN = "test-bearer-token-abc123"
 API_BASE_URL = "https://mock-api.example.com/dev"
 
-# Only actual secrets stay in the Secrets Manager mock.
-# Non-secret config (table name, bucket) is read from env vars by the Lambda handler.
-TEST_CONFIG = {
-    "source_api_token": API_TOKEN,
+SSM_PARAMS = {
+    "source-api-token":        API_TOKEN,
+    "pipeline-state-table":    TABLE_NAME,
+    "raw-bucket-name":         RAW_BUCKET,
+    "source-api-base-url":     API_BASE_URL,
+    "map-state-concurrency":   "5",
+    "config-bucket-name":      "test-config-bucket",
+    "orchestration-bucket-name": "test-orchestration-bucket",
+    "cleaned-bucket-name":     "test-cleaned-bucket",
+    "validated-bucket-name":   "test-validated-bucket",
+    "quarantine-bucket-name":  "test-quarantine-bucket",
+    "glue-database":           "test-glue-db",
 }
 
 SAMPLE_API_RESPONSE = {
@@ -37,10 +47,7 @@ def mock_env(monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", REGION)
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("SECRET_NAME", SECRET_NAME)
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("PIPELINE_STATE_TABLE", TABLE_NAME)
-    monkeypatch.setenv("RAW_BUCKET_NAME", RAW_BUCKET)
+    monkeypatch.setenv("ENVIRONMENT", ENVIRONMENT)
 
 
 @pytest.fixture()
@@ -50,6 +57,19 @@ def aws(mock_env):
     with mock_aws():
         yield
         _client_cache.clear()
+
+
+@pytest.fixture()
+def ssm_parameters(aws):
+    client = boto3.client("ssm", region_name=REGION)
+    for key, value in SSM_PARAMS.items():
+        client.put_parameter(
+            Name=f"{SSM_PATH}/{key}",
+            Value=value,
+            Type="String",
+            Overwrite=True,
+        )
+    return client
 
 
 @pytest.fixture()
@@ -84,16 +104,6 @@ def dynamodb_table(aws):
 def s3_buckets(aws):
     client = boto3.client("s3", region_name=REGION)
     client.create_bucket(Bucket=RAW_BUCKET)
-    return client
-
-
-@pytest.fixture()
-def secret(aws):
-    client = boto3.client("secretsmanager", region_name=REGION)
-    client.create_secret(
-        Name=SECRET_NAME,
-        SecretString=json.dumps(TEST_CONFIG),
-    )
     return client
 
 

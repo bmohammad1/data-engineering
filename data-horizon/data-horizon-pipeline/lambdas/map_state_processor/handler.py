@@ -9,7 +9,7 @@ import logging
 import os
 import time
 
-from shared.constants import STATUS_FAILED, STATUS_SUCCESS
+from shared.constants import STATUS_FAILED, STATUS_SUCCESS, load_ssm_config
 from shared.exceptions import PermanentError, RetryableError
 from shared.logger import configure_logging, run_id_ctx
 
@@ -23,18 +23,13 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config() -> dict:
-    """Load config: API token from Secrets Manager, non-secrets from env vars."""
-    import json
-    from shared.aws_clients import get_client
-
-    sm = get_client("secretsmanager")
-    secret = json.loads(
-        sm.get_secret_value(SecretId=os.environ["SECRET_NAME"])["SecretString"]
-    )
+    """Load all runtime config from SSM Parameter Store."""
+    env = os.environ.get("ENVIRONMENT", "dev")
+    ssm = load_ssm_config(env)
     return {
-        "source_api_token":     secret["source_api_token"],
-        "pipeline_state_table": os.environ["PIPELINE_STATE_TABLE"],
-        "raw_bucket_name":      os.environ["RAW_BUCKET_NAME"],
+        "source_api_token":     ssm["source-api-token"],
+        "pipeline_state_table": ssm["pipeline-state-table"],
+        "raw_bucket_name":      ssm["raw-bucket-name"],
     }
 
 

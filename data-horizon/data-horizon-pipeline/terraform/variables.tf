@@ -9,22 +9,64 @@ variable "environment" {
   type        = string
 }
 
-variable "lambda_memory_size" {
-  description = "Lambda memory in MB"
+variable "config_loader_memory" {
+  description = "Memory in MB for the config loader Lambda"
   type        = number
   default     = 256
 }
 
-variable "lambda_timeout" {
-  description = "Lambda timeout in seconds"
+variable "config_loader_timeout" {
+  description = "Timeout in seconds for the config loader Lambda"
   type        = number
   default     = 60
 }
 
-variable "glue_dpu_count" {
-  description = "Number of DPUs for Glue jobs"
+variable "map_processor_memory" {
+  description = "Memory in MB for the map state processor Lambda"
+  type        = number
+  default     = 256
+}
+
+variable "map_processor_timeout" {
+  description = "Timeout in seconds for the map state processor Lambda"
+  type        = number
+  default     = 60
+}
+
+variable "transform_workers" {
+  description = "Number of workers for the transform Glue job"
   type        = number
   default     = 2
+}
+
+variable "transform_worker_type" {
+  description = "Worker type for the transform Glue job (G.1X, G.2X, G.4X, G.8X)"
+  type        = string
+  default     = "G.1X"
+}
+
+variable "transform_timeout" {
+  description = "Timeout in minutes for the transform Glue job"
+  type        = number
+  default     = 60
+}
+
+variable "validation_workers" {
+  description = "Number of workers for the validation Glue job"
+  type        = number
+  default     = 2
+}
+
+variable "validation_worker_type" {
+  description = "Worker type for the validation Glue job (G.1X, G.2X, G.4X, G.8X)"
+  type        = string
+  default     = "G.1X"
+}
+
+variable "validation_timeout" {
+  description = "Timeout in minutes for the validation Glue job"
+  type        = number
+  default     = 60
 }
 
 variable "redshift_node_type" {

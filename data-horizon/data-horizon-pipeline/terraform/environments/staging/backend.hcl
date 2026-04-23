@@ -1,4 +1,4 @@
-bucket         = "data-horizon-terraform-state-staging"
+bucket         = "data-horizon-terraform-state-staging-22"
 key            = "data-horizon-pipeline/terraform.tfstate"
 region         = "us-east-1"
 dynamodb_table = "terraform-state-lock-staging"

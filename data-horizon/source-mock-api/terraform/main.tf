@@ -357,6 +357,12 @@ resource "aws_cognito_user_pool_client" "this" {
   allowed_oauth_flows_user_pool_client = true
   supported_identity_providers         = ["COGNITO"]
 
+  # Cognito maximum — access tokens cannot exceed 24 hours
+  access_token_validity = 1440
+  token_validity_units {
+    access_token = "minutes"
+  }
+
   # Client must wait for the resource server that defines the custom scope
   depends_on = [aws_cognito_resource_server.this]
 }

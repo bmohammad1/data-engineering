@@ -51,11 +51,11 @@ output "redshift_database_name" {
   value       = module.redshift.database_name
 }
 
-# --- Secrets Manager ---
+# --- SSM Parameter Store ---
 
-output "secret_name" {
-  description = "Secrets Manager secret name for pipeline config"
-  value       = module.secrets_manager.secret_name
+output "ssm_parameter_path_prefix" {
+  description = "SSM Parameter Store path prefix for all pipeline config"
+  value       = module.ssm_parameters.parameter_path_prefix
 }
 
 # --- Lambda ---

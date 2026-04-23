@@ -31,7 +31,7 @@ from utils.dynamodb_updater import (
     update_tag_transform_status,
 )
 
-from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS
+from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS, load_ssm_config
 from shared.logger import configure_logging, run_id_ctx
 
 configure_logging()
@@ -206,18 +206,13 @@ def _accumulate_tag_counts(
 
 def main() -> None:
     """Glue job entry point."""
-    args = getResolvedOptions(sys.argv, [
-        "JOB_NAME",
-        "run_id",
-        "RAW_BUCKET",
-        "CLEANED_BUCKET",
-        "PIPELINE_STATE_TABLE",
-    ])
+    args = getResolvedOptions(sys.argv, ["JOB_NAME", "run_id", "ENVIRONMENT"])
 
     run_id = args["run_id"]
-    raw_bucket = args["RAW_BUCKET"]
-    cleaned_bucket = args["CLEANED_BUCKET"]
-    table_name_dynamo = args["PIPELINE_STATE_TABLE"]
+    ssm = load_ssm_config(args["ENVIRONMENT"])
+    raw_bucket = ssm["raw-bucket-name"]
+    cleaned_bucket = ssm["cleaned-bucket-name"]
+    table_name_dynamo = ssm["pipeline-state-table"]
 
     run_id_ctx.set(run_id)
     job_start = time.perf_counter()

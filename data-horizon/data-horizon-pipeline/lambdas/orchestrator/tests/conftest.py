@@ -10,18 +10,34 @@ from moto import mock_aws
 
 
 REGION = "us-east-1"
+ENVIRONMENT = "test"
+SSM_PATH = f"/data-horizon/{ENVIRONMENT}"
+
 TABLE_NAME = "PipelineAudit"
 CONFIG_BUCKET = "test-config-bucket"
 ORCHESTRATION_BUCKET = "test-orchestration-bucket"
-SECRET_NAME = "test-pipeline-config"
+RAW_BUCKET = "test-raw-bucket"
 API_BASE_URL = "https://mock-api.example.com/dev"
+API_TOKEN = "test-bearer-token-abc123"
 
-# Only actual secrets stay in the Secrets Manager mock.
-# Non-secret config is read from env vars by the Lambda handler.
-# config_bucket_name is kept here so load_tags_from_s3 unit tests
-# can pass TEST_CONFIG directly without going through the handler.
+SSM_PARAMS = {
+    "source-api-token":        API_TOKEN,
+    "pipeline-state-table":    TABLE_NAME,
+    "config-bucket-name":      CONFIG_BUCKET,
+    "orchestration-bucket-name": ORCHESTRATION_BUCKET,
+    "raw-bucket-name":         RAW_BUCKET,
+    "source-api-base-url":     API_BASE_URL,
+    "map-state-concurrency":   "5",
+    "cleaned-bucket-name":     "test-cleaned-bucket",
+    "validated-bucket-name":   "test-validated-bucket",
+    "quarantine-bucket-name":  "test-quarantine-bucket",
+    "glue-database":           "test-glue-db",
+}
+
+# Kept for unit tests that call load_tags_from_s3 directly without going through
+# the handler (they need config_bucket_name in the config dict).
 TEST_CONFIG = {
-    "source_api_token":  "test-bearer-token-abc123",
+    "source_api_token":   API_TOKEN,
     "config_bucket_name": CONFIG_BUCKET,
 }
 
@@ -31,13 +47,7 @@ def mock_env(monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", REGION)
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("SECRET_NAME", SECRET_NAME)
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("PIPELINE_STATE_TABLE", TABLE_NAME)
-    monkeypatch.setenv("CONFIG_BUCKET_NAME", CONFIG_BUCKET)
-    monkeypatch.setenv("ORCHESTRATION_BUCKET_NAME", ORCHESTRATION_BUCKET)
-    monkeypatch.setenv("SOURCE_API_BASE_URL", API_BASE_URL)
-    monkeypatch.setenv("MAP_STATE_CONCURRENCY", "5")
+    monkeypatch.setenv("ENVIRONMENT", ENVIRONMENT)
 
 
 @pytest.fixture()
@@ -47,6 +57,19 @@ def aws(mock_env):
     with mock_aws():
         yield
         _client_cache.clear()
+
+
+@pytest.fixture()
+def ssm_parameters(aws):
+    client = boto3.client("ssm", region_name=REGION)
+    for key, value in SSM_PARAMS.items():
+        client.put_parameter(
+            Name=f"{SSM_PATH}/{key}",
+            Value=value,
+            Type="String",
+            Overwrite=True,
+        )
+    return client
 
 
 @pytest.fixture()
@@ -82,16 +105,6 @@ def s3_buckets(aws):
     client = boto3.client("s3", region_name=REGION)
     client.create_bucket(Bucket=CONFIG_BUCKET)
     client.create_bucket(Bucket=ORCHESTRATION_BUCKET)
-    return client
-
-
-@pytest.fixture()
-def secret(aws):
-    client = boto3.client("secretsmanager", region_name=REGION)
-    client.create_secret(
-        Name=SECRET_NAME,
-        SecretString=json.dumps(TEST_CONFIG),
-    )
     return client
 
 

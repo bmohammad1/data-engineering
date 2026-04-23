@@ -3,8 +3,8 @@ variable "name_prefix" {
   type        = string
 }
 
-variable "secret_arn" {
-  description = "Secrets Manager secret ARN for pipeline config"
+variable "ssm_parameter_path_prefix" {
+  description = "SSM path prefix for pipeline parameters (e.g. /data-horizon/dev)"
   type        = string
 }
 

@@ -39,11 +39,13 @@ data "aws_iam_policy_document" "orchestrator" {
     resources = [var.dynamodb_table_arn]
   }
 
-  # Secrets Manager: read pipeline config
+  # SSM Parameter Store: read pipeline config at cold start
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.secret_arn]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter${var.ssm_parameter_path_prefix}/*",
+    ]
   }
 }
 
@@ -78,11 +80,13 @@ data "aws_iam_policy_document" "map_processor" {
     resources = [var.extraction_failures_queue_arn]
   }
 
-  # Secrets Manager: read pipeline config
+  # SSM Parameter Store: read pipeline config at cold start
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.secret_arn]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter${var.ssm_parameter_path_prefix}/*",
+    ]
   }
 }
 
@@ -143,11 +147,13 @@ data "aws_iam_policy_document" "glue" {
     resources = ["*"]
   }
 
-  # Secrets Manager: read pipeline config
+  # SSM Parameter Store: read pipeline config at job start
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.secret_arn]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter${var.ssm_parameter_path_prefix}/*",
+    ]
   }
 
   # DynamoDB: read and write run metadata and tag records

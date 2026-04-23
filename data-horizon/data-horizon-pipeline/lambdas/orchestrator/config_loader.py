@@ -1,40 +1,22 @@
-"""Load pipeline config from Secrets Manager and tags from S3."""
+"""Load pipeline config from SSM-supplied values and tags from S3."""
 
 import csv
 import io
-import json
 import logging
 
 from botocore.exceptions import ClientError
 
 from shared.aws_clients import get_client
-from shared.exceptions import ConfigLoadError, TagFileError
+from shared.exceptions import TagFileError
 
 logger = logging.getLogger(__name__)
 
 TAGS_CSV_KEY = "source_config/tags.csv"
 
 
-def load_pipeline_config(secret_name: str) -> dict:
-    """Fetch the API token from Secrets Manager."""
-    sm = get_client("secretsmanager")
-
-    try:
-        response = sm.get_secret_value(SecretId=secret_name)
-        secret = json.loads(response["SecretString"])
-    except ClientError as exc:
-        raise ConfigLoadError(
-            f"Failed to load secret '{secret_name}': {exc}",
-            service="secretsmanager",
-        )
-    except (json.JSONDecodeError, KeyError) as exc:
-        raise ConfigLoadError(
-            f"Malformed secret '{secret_name}': {exc}",
-            service="secretsmanager",
-        )
-
-    logger.debug("Pipeline config loaded", extra={"secret_name": secret_name})
-    return {"source_api_token": secret["source_api_token"]}
+def load_pipeline_config(source_api_token: str) -> dict:
+    """Build the pipeline config dict from the SSM-sourced API token."""
+    return {"source_api_token": source_api_token}
 
 
 def load_tags_from_s3(config: dict) -> list[str]:

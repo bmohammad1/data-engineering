@@ -62,21 +62,34 @@ module "redshift" {
   tags                  = local.common_tags
 }
 
-# --- Secrets Manager (API token only) ---
-module "secrets_manager" {
-  source = "./modules/secrets_manager"
+# --- SSM Parameter Store (all runtime config + secrets) ---
+module "ssm_parameters" {
+  source = "./modules/ssm_parameters"
 
-  name_prefix      = local.name_prefix
-  source_api_token = var.source_api_token
-  tags             = local.common_tags
+  environment              = var.environment
+  source_api_token         = var.source_api_token
+  redshift_master_password = var.redshift_master_password
+
+  pipeline_state_table      = module.dynamodb.table_name
+  source_api_base_url       = var.source_api_base_url
+  config_bucket_name        = module.s3.config_bucket_name
+  orchestration_bucket_name = module.s3.orchestration_bucket_name
+  raw_bucket_name           = module.s3.raw_bucket_name
+  cleaned_bucket_name       = module.s3.cleaned_bucket_name
+  validated_bucket_name     = module.s3.validated_bucket_name
+  quarantine_bucket_name    = module.s3.bad_bucket_name
+  glue_database             = module.glue_catalog.database_name
+  map_state_concurrency     = var.map_state_concurrency
+
+  tags = local.common_tags
 }
 
 # --- IAM (roles + policies) ---
 module "iam" {
   source = "./modules/iam"
 
-  name_prefix = local.name_prefix
-  secret_arn  = module.secrets_manager.secret_arn
+  name_prefix               = local.name_prefix
+  ssm_parameter_path_prefix = module.ssm_parameters.parameter_path_prefix
 
   s3_raw_bucket_arn           = module.s3.raw_bucket_arn
   s3_cleaned_bucket_arn       = module.s3.cleaned_bucket_arn
@@ -102,18 +115,12 @@ module "lambda" {
 
   name_prefix            = local.name_prefix
   environment            = var.environment
-  secret_name            = module.secrets_manager.secret_name
   config_loader_role_arn = module.iam.lambda_config_loader_role_arn
   map_processor_role_arn = module.iam.lambda_map_processor_role_arn
-  memory_size            = var.lambda_memory_size
-  timeout                = var.lambda_timeout
-
-  pipeline_state_table      = module.dynamodb.table_name
-  raw_bucket_name           = module.s3.raw_bucket_name
-  config_bucket_name        = module.s3.config_bucket_name
-  orchestration_bucket_name = module.s3.orchestration_bucket_name
-  source_api_base_url       = var.source_api_base_url
-  map_state_concurrency = var.map_state_concurrency
+  config_loader_memory   = var.config_loader_memory
+  config_loader_timeout  = var.config_loader_timeout
+  map_processor_memory   = var.map_processor_memory
+  map_processor_timeout  = var.map_processor_timeout
 
   tags = local.common_tags
 }
@@ -125,15 +132,15 @@ module "glue" {
   name_prefix            = local.name_prefix
   glue_role_arn          = module.iam.glue_role_arn
   scripts_bucket_name    = module.s3.scripts_bucket_name
-  secret_name            = module.secrets_manager.secret_name
-  raw_bucket_name        = module.s3.raw_bucket_name
-  cleaned_bucket_name    = module.s3.cleaned_bucket_name
-  validated_bucket_name  = module.s3.validated_bucket_name
-  quarantine_bucket_name = module.s3.bad_bucket_name
-  pipeline_state_table   = module.dynamodb.table_name
-  glue_database          = module.glue_catalog.database_name
   environment            = var.environment
-  tags                   = local.common_tags
+  transform_workers      = var.transform_workers
+  transform_worker_type  = var.transform_worker_type
+  transform_timeout      = var.transform_timeout
+  validation_workers     = var.validation_workers
+  validation_worker_type = var.validation_worker_type
+  validation_timeout     = var.validation_timeout
+
+  tags = local.common_tags
 }
 
 # --- Glue Data Catalog ---

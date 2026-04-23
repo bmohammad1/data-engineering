@@ -11,6 +11,7 @@ import time
 
 from botocore.exceptions import ClientError
 
+from shared.constants import load_ssm_config
 from shared.exceptions import PermanentError, RetryableError
 from shared.logger import configure_logging, run_id_ctx
 
@@ -46,18 +47,16 @@ def handler(event: dict, context: object) -> dict:
     environment = os.environ.get("ENVIRONMENT", "dev")
 
     try:
-        secret_name = os.environ.get("SECRET_NAME", "")
-        config = load_pipeline_config(secret_name)
+        ssm = load_ssm_config(environment)
+        config = load_pipeline_config(ssm["source-api-token"])
 
-        # Non-secret config comes from env vars; inject into config so helpers
-        # (load_tags_from_s3, generate_map_state_input) can still read from it.
-        config["config_bucket_name"]    = os.environ["CONFIG_BUCKET_NAME"]
-        config["source_api_base_url"]   = os.environ.get("SOURCE_API_BASE_URL", "")
+        config["config_bucket_name"]  = ssm["config-bucket-name"]
+        config["source_api_base_url"] = ssm.get("source-api-base-url", "")
 
         tags = load_tags_from_s3(config)
 
-        table_name           = os.environ["PIPELINE_STATE_TABLE"]
-        orchestration_bucket = os.environ["ORCHESTRATION_BUCKET_NAME"]
+        table_name           = ssm["pipeline-state-table"]
+        orchestration_bucket = ssm["orchestration-bucket-name"]
 
         write_run_metadata(table_name, run_id, total_tags=len(tags), environment=environment)
 
@@ -127,5 +126,5 @@ def handler(event: dict, context: object) -> dict:
     return {
         "run_id": run_id,
         "map_items_s3_key": map_items_s3_key,
-        "concurrency": int(os.environ.get("MAP_STATE_CONCURRENCY", "5")),
+        "concurrency": int(ssm.get("map-state-concurrency", "5")),
     }
