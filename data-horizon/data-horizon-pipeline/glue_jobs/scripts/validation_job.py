@@ -1,6 +1,6 @@
 """Glue validation job — Child3, step 2 of 2.
 
-Reads cleaned JSON from the cleaned S3 bucket, applies per-table data quality
+Reads cleaned Parquet from the cleaned S3 bucket, applies per-table data quality
 rules, and routes records to one of two destinations:
 
   PASS → s3://<VALIDATED_BUCKET>/validated/<run_id>/<table>/  (Parquet, snappy)
@@ -28,15 +28,15 @@ from utils.schema_definitions import TABLE_SCHEMAS
 from utils.spark_helpers import (
     add_audit_columns,
     create_glue_context,
-    read_json_from_s3,
+    read_parquet_from_s3,
     write_json_to_s3,
     write_parquet_to_catalog,
 )
 from utils.validation_rules import apply_validation
 from utils.dynamodb_updater import (
+    bulk_update_tag_validate_status,
     fetch_transform_succeeded_tags,
     update_run_validate_status,
-    update_tag_validate_status,
 )
 
 from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS, load_ssm_config
@@ -56,15 +56,15 @@ def main() -> None:
     args = getResolvedOptions(sys.argv, ["JOB_NAME", "run_id", "ENVIRONMENT"])
 
     run_id = args["run_id"]
-    ssm = load_ssm_config(args["ENVIRONMENT"])
-    cleaned_bucket = ssm["cleaned-bucket-name"]
-    validated_bucket = ssm["validated-bucket-name"]
-    quarantine_bucket = ssm["quarantine-bucket-name"]
-    table_name_dynamo = ssm["pipeline-state-table"]
-    glue_database = ssm["glue-database"]
+    ssm_config = load_ssm_config(args["ENVIRONMENT"])
+    cleaned_bucket = ssm_config["cleaned-bucket-name"]
+    validated_bucket = ssm_config["validated-bucket-name"]
+    quarantine_bucket = ssm_config["quarantine-bucket-name"]
+    dynamo_table_name = ssm_config["pipeline-state-table"]
+    glue_database = ssm_config["glue-database"]
 
     run_id_ctx.set(run_id)
-    job_start = time.perf_counter()
+    job_start_time = time.perf_counter()
 
     glue_ctx, _, job = create_glue_context(args["JOB_NAME"], args)
 
@@ -78,74 +78,82 @@ def main() -> None:
         },
     )
 
-    update_run_validate_status(table_name_dynamo, run_id, STATUS_RUNNING)
+    update_run_validate_status(dynamo_table_name, run_id, STATUS_RUNNING)
 
     total_valid = 0
     total_quarantined = 0
 
-    # { tag_id: {"valid": int, "invalid": int} } — accumulated across all tables
+    # tag_counts tracks valid and quarantined row counts per tag across all tables.
+    # Structure: { tag_id: { "valid": int, "invalid": int } }
     tag_counts: dict[str, dict] = {}
-    all_tag_ids: set[str] = fetch_transform_succeeded_tags(table_name_dynamo, run_id)
+
+    all_tag_ids: set[str] = fetch_transform_succeeded_tags(dynamo_table_name, run_id)
     logger.info(
         "Tags loaded from DynamoDB",
         extra={"run_id": run_id, "tag_count": len(all_tag_ids)},
     )
 
-    for table_name, schema in TABLE_SCHEMAS.items():
-        table_start = time.perf_counter()
+    for table_name, table_schema in TABLE_SCHEMAS.items():
+        table_start_time = time.perf_counter()
         cleaned_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
 
         try:
-            df = read_json_from_s3(glue_ctx, cleaned_path, schema)
-            valid_df, invalid_df = apply_validation(df, table_name)
+            table_dataframe = read_parquet_from_s3(glue_ctx, cleaned_path, table_schema)
 
-            valid_count = valid_df.count()
-            invalid_count = invalid_df.count()
+            valid_dataframe, invalid_dataframe = apply_validation(table_dataframe, table_name)
 
-            if valid_count > 0:
-                catalog_table = f"validated_{table_name}"
+            valid_record_count = valid_dataframe.count()
+            invalid_record_count = invalid_dataframe.count()
+
+            if valid_record_count > 0:
+                catalog_table_name = f"validated_{table_name}"
                 validated_path = f"s3://{validated_bucket}/validated/{run_id}/{table_name}/"
+                valid_dataframe_with_audit = add_audit_columns(valid_dataframe, run_id, table_name)
                 write_parquet_to_catalog(
                     glue_ctx,
-                    add_audit_columns(valid_df, run_id, table_name),
+                    valid_dataframe_with_audit,
                     glue_database,
-                    catalog_table,
+                    catalog_table_name,
                     validated_path,
                 )
 
-            if invalid_count > 0:
+            if invalid_record_count > 0:
                 quarantine_path = f"s3://{quarantine_bucket}/quarantine/{run_id}/{table_name}/"
-                write_json_to_s3(
-                    add_audit_columns(invalid_df, run_id, table_name),
-                    quarantine_path,
-                )
+                invalid_dataframe_with_audit = add_audit_columns(invalid_dataframe, run_id, table_name)
+                write_json_to_s3(invalid_dataframe_with_audit, quarantine_path)
 
-            total_valid += valid_count
-            total_quarantined += invalid_count
+            total_valid += valid_record_count
+            total_quarantined += invalid_record_count
 
-            if "TagID" in valid_df.columns:
-                for row in valid_df.groupBy("TagID").count().collect():
-                    tid = row.TagID
-                    if tid:
-                        tag_counts.setdefault(tid, {"valid": 0, "invalid": 0})
-                        tag_counts[tid]["valid"] += row["count"]
+            # Accumulate per-tag valid counts for DynamoDB outcome classification.
+            table_has_tag_id_column = "TagID" in valid_dataframe.columns
+            if table_has_tag_id_column:
+                rows_per_tag = valid_dataframe.groupBy("TagID").count().collect()
+                for row in rows_per_tag:
+                    tag_id = row.TagID
+                    if tag_id:
+                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
+                        tag_counts[tag_id]["valid"] += row["count"]
 
-            if "TagID" in invalid_df.columns:
-                for row in invalid_df.groupBy("TagID").count().collect():
-                    tid = row.TagID
-                    if tid:
-                        tag_counts.setdefault(tid, {"valid": 0, "invalid": 0})
-                        tag_counts[tid]["invalid"] += row["count"]
+            # Accumulate per-tag invalid counts for DynamoDB outcome classification.
+            table_has_tag_id_in_invalid = "TagID" in invalid_dataframe.columns
+            if table_has_tag_id_in_invalid:
+                rows_per_tag = invalid_dataframe.groupBy("TagID").count().collect()
+                for row in rows_per_tag:
+                    tag_id = row.TagID
+                    if tag_id:
+                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
+                        tag_counts[tag_id]["invalid"] += row["count"]
 
-            duration_ms = round((time.perf_counter() - table_start) * 1_000, 2)
+            table_duration_ms = round((time.perf_counter() - table_start_time) * 1_000, 2)
             logger.info(
                 "Table validated",
                 extra={
                     "run_id": run_id,
                     "table": table_name,
-                    "valid": valid_count,
-                    "invalid": invalid_count,
-                    "duration_ms": duration_ms,
+                    "valid": valid_record_count,
+                    "invalid": invalid_record_count,
+                    "duration_ms": table_duration_ms,
                 },
             )
 
@@ -156,15 +164,21 @@ def main() -> None:
             )
             raise
 
-    # Per-tag DynamoDB updates
+    # Classify every tag into SUCCESS or FAILED and build the DynamoDB update list.
+    # A tag is FAILED only if it produced zero valid records across all 13 tables.
     tags_success = 0
     tags_failed = 0
+    tag_update_list = []
 
     for tag_id in all_tag_ids:
-        counts = tag_counts.get(tag_id, {"valid": 0, "invalid": 0})
-        tag_status = STATUS_SUCCESS if counts["valid"] > 0 else STATUS_FAILED
+        tag_record_counts = tag_counts.get(tag_id, {"valid": 0, "invalid": 0})
+        tag_has_valid_records = tag_record_counts["valid"] > 0
 
-        if tag_status == STATUS_FAILED:
+        if tag_has_valid_records:
+            tag_status = STATUS_SUCCESS
+            tags_success += 1
+        else:
+            tag_status = STATUS_FAILED
             tags_failed += 1
             logger.error(
                 "Tag validation failed — all records quarantined",
@@ -172,31 +186,23 @@ def main() -> None:
                     "run_id": run_id,
                     "tag_id": tag_id,
                     "valid_count": 0,
-                    "invalid_count": counts["invalid"],
+                    "invalid_count": tag_record_counts["invalid"],
                 },
             )
-        else:
-            tags_success += 1
 
-        try:
-            update_tag_validate_status(
-                table_name_dynamo,
-                run_id,
-                tag_id,
-                tag_status,
-                valid_count=counts["valid"],
-                invalid_count=counts["invalid"],
-            )
-        except Exception:
-            logger.warning(
-                "Failed to update DynamoDB for tag — continuing",
-                extra={"run_id": run_id, "tag_id": tag_id},
-            )
+        tag_update_list.append({
+            "tag_id": tag_id,
+            "status": tag_status,
+            "valid_count": tag_record_counts["valid"],
+            "invalid_count": tag_record_counts["invalid"],
+        })
 
-    total_duration_ms = round((time.perf_counter() - job_start) * 1_000, 2)
+    bulk_update_tag_validate_status(dynamo_table_name, run_id, tag_update_list)
+
+    total_duration_ms = round((time.perf_counter() - job_start_time) * 1_000, 2)
 
     update_run_validate_status(
-        table_name_dynamo,
+        dynamo_table_name,
         run_id,
         STATUS_SUCCESS,
         validate_tags_success=tags_success,
@@ -218,7 +224,8 @@ def main() -> None:
         },
     )
 
-    if total_valid == 0:
+    all_records_failed_validation = total_valid == 0
+    if all_records_failed_validation:
         raise RuntimeError(
             f"All {total_quarantined} records failed validation for run {run_id} — pipeline aborted"
         )

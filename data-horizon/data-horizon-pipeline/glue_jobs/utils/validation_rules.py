@@ -26,12 +26,15 @@ _COMPLIANCE_STATUSES = {"COMPLIANT", "NON_COMPLIANT", "PENDING"}
 
 def _in_set(col_name: str, allowed: set[str]) -> Column:
     """Return a Column that is True when the value is in the allowed set."""
-    return F.col(col_name).isin(list(allowed))
+    allowed_as_list = list(allowed)
+    return F.col(col_name).isin(allowed_as_list)
 
 
 def _not_null_or_empty(col_name: str) -> Column:
     """Return a Column that is True when the value is non-null and non-empty."""
-    return F.col(col_name).isNotNull() & (F.trim(F.col(col_name)) != "")
+    value_is_not_null = F.col(col_name).isNotNull()
+    value_is_not_empty = F.trim(F.col(col_name)) != ""
+    return value_is_not_null & value_is_not_empty
 
 
 # ---------------------------------------------------------------------------
@@ -41,14 +44,14 @@ def _not_null_or_empty(col_name: str) -> Column:
 # Each entry is a list of (rule_name, passing_condition) tuples.
 # A row is VALID only if ALL conditions evaluate to True.
 #
-# Rules are wrapped in callables so PySpark Column expressions are constructed
+# Rules are wrapped in a callable so PySpark Column expressions are constructed
 # lazily (at call time, not at module import time). This allows the module to
 # be imported without an active SparkContext — required for unit testing.
 
 def _build_rules() -> dict[str, list[tuple[str, Column]]]:
     return {
         "tag": [
-            ("tag_id_required",   _not_null_or_empty("TagID")),
+            ("tag_id_required", _not_null_or_empty("TagID")),
         ],
         "equipment": [
             ("equipment_id_required", _not_null_or_empty("EquipmentID")),
@@ -86,11 +89,11 @@ def _build_rules() -> dict[str, list[tuple[str, Column]]]:
             ("timestamp_not_null", F.col("Timestamp").isNotNull()),
         ],
         "contracts": [
-            ("contract_id_required",  _not_null_or_empty("ContractID")),
-            ("customer_id_required",  _not_null_or_empty("CustomerID")),
-            ("tag_id_required",       _not_null_or_empty("TagID")),
-            ("volume_positive",       F.col("ContractVolume") > 0),
-            ("price_positive",        F.col("PricePerUnit") > 0),
+            ("contract_id_required", _not_null_or_empty("ContractID")),
+            ("customer_id_required", _not_null_or_empty("CustomerID")),
+            ("tag_id_required",      _not_null_or_empty("TagID")),
+            ("volume_positive",      F.col("ContractVolume") > 0),
+            ("price_positive",       F.col("PricePerUnit") > 0),
             (
                 "end_after_start",
                 F.col("ContractEndDate").isNotNull()
@@ -131,43 +134,49 @@ def _build_rules() -> dict[str, list[tuple[str, Column]]]:
     }
 
 
-def apply_validation(df: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
-    """Split df into (valid_df, invalid_df) based on per-table rules.
+def apply_validation(dataframe: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
+    """Split dataframe into (valid_dataframe, invalid_dataframe) based on per-table rules.
 
-    invalid_df gets an extra _validation_errors column listing every
+    invalid_dataframe gets an extra _validation_errors column listing every
     rule name that failed, separated by '; '.
     """
-    rules = _build_rules().get(table, [])
+    table_rules = _build_rules().get(table, [])
 
-    if not rules:
+    table_has_no_rules = len(table_rules) == 0
+    if table_has_no_rules:
         logger.warning("No validation rules defined for table '%s' — treating all rows as valid", table)
-        return df, df.filter(F.lit(False))
+        empty_dataframe = dataframe.filter(F.lit(False))
+        return dataframe, empty_dataframe
 
-    # Build a boolean column per rule, then derive a list of failed rule names.
-    failed_rule_parts = []
-    for rule_name, condition in rules:
-        # When condition is False the rule failed — include the rule name in the error list
-        failed_rule_parts.append(
-            F.when(~condition, F.lit(rule_name)).otherwise(F.lit(None))
-        )
+    # For each rule, produce a column that contains the rule name when the rule
+    # failed, or null when the rule passed. These are later joined into one
+    # comma-separated error string per row.
+    failed_rule_name_columns = []
+    for rule_name, passing_condition in table_rules:
+        rule_failed = ~passing_condition
+        failed_rule_name_column = F.when(rule_failed, F.lit(rule_name)).otherwise(F.lit(None))
+        failed_rule_name_columns.append(failed_rule_name_column)
 
-    # Concatenate non-null failed rule names into a single string
-    errors_col = F.concat_ws(
-        "; ",
-        *[F.coalesce(part, F.lit("")) for part in failed_rule_parts]
+    # Concatenate all non-null failed rule names into a single string per row.
+    coalesced_parts = [F.coalesce(part, F.lit("")) for part in failed_rule_name_columns]
+    errors_column = F.concat_ws("; ", *coalesced_parts)
+
+    # Remove leading/trailing/duplicate separators that arise from empty strings.
+    errors_column = F.regexp_replace(errors_column, r"^(; )+|(; )+$|(?<=; )(; )+", "")
+
+    dataframe_with_errors = dataframe.withColumn("_validation_errors", errors_column)
+
+    # A row is valid when its error string is null or empty after trimming.
+    row_has_no_errors = (
+        F.col("_validation_errors").isNull()
+        | (F.trim(F.col("_validation_errors")) == "")
     )
-    # Trim trailing/leading separators that arise from empty strings
-    errors_col = F.regexp_replace(errors_col, r"^(; )+|(; )+$|(?<=; )(; )+", "")
+    valid_dataframe = dataframe_with_errors.filter(row_has_no_errors).drop("_validation_errors")
 
-    df_with_errors = df.withColumn("_validation_errors", errors_col)
-
-    # A row is valid when _validation_errors is empty
-    valid_df = df_with_errors.filter(
-        F.col("_validation_errors").isNull() | (F.trim(F.col("_validation_errors")) == "")
-    ).drop("_validation_errors")
-
-    invalid_df = df_with_errors.filter(
-        F.col("_validation_errors").isNotNull() & (F.trim(F.col("_validation_errors")) != "")
+    row_has_errors = (
+        F.col("_validation_errors").isNotNull()
+        & (F.trim(F.col("_validation_errors")) != "")
     )
+    invalid_dataframe = dataframe_with_errors.filter(row_has_errors)
 
-    return valid_df, invalid_df
+    return valid_dataframe, invalid_dataframe

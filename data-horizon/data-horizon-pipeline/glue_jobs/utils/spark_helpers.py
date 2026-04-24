@@ -47,49 +47,86 @@ def read_json_from_s3(
     The DynamicFrame is converted to a Spark DataFrame and columns are cast
     to the target schema types so downstream validation rules get correct types.
     """
-    dyf = glue_ctx.create_dynamic_frame.from_options(
+    dynamic_frame = glue_ctx.create_dynamic_frame.from_options(
         connection_type="s3",
         connection_options={"paths": [s3_path], "recurse": True},
         format="json",
     )
-    df = dyf.toDF()
+    dataframe = dynamic_frame.toDF()
 
-    # Cast each column to the declared schema type; add as null if missing.
-    select_exprs = []
+    cast_column_expressions = []
     for field in schema.fields:
-        if field.name in df.columns:
-            select_exprs.append(
-                F.col(field.name).cast(field.dataType).alias(field.name)
-            )
+        column_exists_in_data = field.name in dataframe.columns
+        if column_exists_in_data:
+            cast_expression = F.col(field.name).cast(field.dataType).alias(field.name)
         else:
-            select_exprs.append(
-                F.lit(None).cast(field.dataType).alias(field.name)
-            )
-    return df.select(select_exprs)
+            cast_expression = F.lit(None).cast(field.dataType).alias(field.name)
+        cast_column_expressions.append(cast_expression)
+
+    return dataframe.select(cast_column_expressions)
 
 
-def write_json_to_s3(df: DataFrame, s3_path: str) -> None:
+def read_parquet_from_s3(
+    glue_ctx: GlueContext,
+    s3_path: str,
+    schema: StructType,
+) -> DataFrame:
+    """Read Parquet files from an S3 prefix via the Glue DynamicFrame API.
+
+    Using create_dynamic_frame.from_options avoids the Spark FileSystem cache
+    stale-listing issue that causes 'No such file' errors when reading S3
+    paths written moments earlier by the same job session.
+    The DynamicFrame is converted to a Spark DataFrame and columns are cast
+    to the target schema types so downstream validation rules get correct types.
+    """
+    dynamic_frame = glue_ctx.create_dynamic_frame.from_options(
+        connection_type="s3",
+        connection_options={"paths": [s3_path], "recurse": True},
+        format="parquet",
+    )
+    dataframe = dynamic_frame.toDF()
+
+    cast_column_expressions = []
+    for field in schema.fields:
+        column_exists_in_data = field.name in dataframe.columns
+        if column_exists_in_data:
+            cast_expression = F.col(field.name).cast(field.dataType).alias(field.name)
+        else:
+            cast_expression = F.lit(None).cast(field.dataType).alias(field.name)
+        cast_column_expressions.append(cast_expression)
+
+    return dataframe.select(cast_column_expressions)
+
+
+def write_json_to_s3(dataframe: DataFrame, s3_path: str) -> None:
     """Write a DataFrame to S3 as newline-delimited JSON, overwriting any existing data."""
-    (
-        df.write
-        .mode("overwrite")
-        .json(s3_path)
-    )
+    dataframe.write.mode("overwrite").json(s3_path)
 
 
-def write_parquet_to_s3(df: DataFrame, s3_path: str) -> None:
-    """Write a DataFrame to S3 as snappy-compressed Parquet, overwriting any existing data."""
-    (
-        df.write
-        .mode("overwrite")
-        .option("compression", "snappy")
-        .parquet(s3_path)
-    )
+def write_parquet_to_s3(
+    dataframe: DataFrame,
+    s3_path: str,
+    partition_cols: list[str] | None = None,
+) -> None:
+    """Write a DataFrame to S3 as snappy-compressed Parquet, overwriting any existing data.
+
+    When partition_cols is provided, Spark creates one subdirectory per unique
+    combination of partition column values (e.g., partition_date=2024-01-15/).
+    Athena and downstream Glue jobs skip irrelevant partitions entirely, so
+    queries that filter on those columns only scan the matching subdirectories.
+    """
+    writer = dataframe.write.mode("overwrite").option("compression", "snappy")
+
+    partition_columns_were_provided = partition_cols is not None and len(partition_cols) > 0
+    if partition_columns_were_provided:
+        writer = writer.partitionBy(*partition_cols)
+
+    writer.parquet(s3_path)
 
 
 def write_parquet_to_catalog(
     glue_ctx: GlueContext,
-    df: DataFrame,
+    dataframe: DataFrame,
     database: str,
     table_name: str,
     s3_path: str,
@@ -99,14 +136,7 @@ def write_parquet_to_catalog(
     Using enableUpdateCatalog=True means Athena can query the table
     immediately after the job finishes — no MSCK REPAIR TABLE needed.
     """
-    dynamic_frame = glue_ctx.create_dynamic_frame.from_options(
-        connection_type="s3",
-        connection_options={"paths": []},
-        format="parquet",
-    )
-    # Convert back from Spark DataFrame to DynamicFrame for catalog sink
-    from awsglue.dynamicframe import DynamicFrame
-    dynamic_frame = DynamicFrame.fromDF(df, glue_ctx, table_name)
+    dynamic_frame = DynamicFrame.fromDF(dataframe, glue_ctx, table_name)
 
     sink = glue_ctx.getSink(
         connection_type="s3",
@@ -120,11 +150,9 @@ def write_parquet_to_catalog(
     sink.writeFrame(dynamic_frame)
 
 
-def add_audit_columns(df: DataFrame, run_id: str, source_table: str) -> DataFrame:
+def add_audit_columns(dataframe: DataFrame, run_id: str, source_table: str) -> DataFrame:
     """Append pipeline audit columns to a DataFrame."""
-    return (
-        df
-        .withColumn("_run_id",       F.lit(run_id))
-        .withColumn("_source_table", F.lit(source_table))
-        .withColumn("_ingested_at",  F.current_timestamp())
-    )
+    dataframe_with_run_id = dataframe.withColumn("_run_id", F.lit(run_id))
+    dataframe_with_source = dataframe_with_run_id.withColumn("_source_table", F.lit(source_table))
+    dataframe_with_timestamp = dataframe_with_source.withColumn("_ingested_at", F.current_timestamp())
+    return dataframe_with_timestamp

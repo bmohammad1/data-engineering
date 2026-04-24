@@ -13,6 +13,7 @@ Per-tag items carry record counts so operators can track data volume per tag.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
@@ -22,6 +23,104 @@ from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX, STATUS_RUNNI
 from shared.exceptions import DynamoDBError
 
 logger = logging.getLogger(__name__)
+
+# Number of concurrent threads used when writing per-tag DynamoDB updates.
+# At 50 threads with ~10ms per update_item round-trip, 5,000 tags complete
+# in ~1 second instead of ~50 seconds sequentially.
+_DYNAMODB_WRITE_CONCURRENCY = 50
+
+
+# ---------------------------------------------------------------------------
+# Bulk concurrent update helpers
+# ---------------------------------------------------------------------------
+
+
+def bulk_update_tag_transform_status(
+    table_name: str,
+    run_id: str,
+    tag_updates: list[dict],
+) -> None:
+    """Update TRANSFORM stage status on existing TAG items for all tags concurrently.
+
+    Each entry in tag_updates must contain:
+        tag_id, status, records_extracted, records_dropped, records_transformed
+
+    Submits one update_item call per tag to a thread pool so all updates run
+    in parallel. A failure for any individual tag logs a warning and does not
+    abort the remaining updates — fault isolation is preserved.
+    """
+    if not tag_updates:
+        return
+
+    with ThreadPoolExecutor(max_workers=_DYNAMODB_WRITE_CONCURRENCY) as executor:
+        future_to_tag_id = {}
+
+        for update in tag_updates:
+            tag_id = update["tag_id"]
+            future = executor.submit(
+                update_tag_transform_status,
+                table_name,
+                run_id,
+                tag_id,
+                update["status"],
+                update.get("records_extracted", 0),
+                update.get("records_dropped", 0),
+                update.get("records_transformed", 0),
+            )
+            future_to_tag_id[future] = tag_id
+
+        for future in as_completed(future_to_tag_id):
+            tag_id = future_to_tag_id[future]
+            exc = future.exception()
+            if exc:
+                logger.warning(
+                    "Failed to update DynamoDB TRANSFORM status for tag — continuing",
+                    extra={"run_id": run_id, "tag_id": tag_id, "error": str(exc)},
+                )
+
+    logger.debug(
+        "Bulk TRANSFORM status update complete",
+        extra={"run_id": run_id, "tag_count": len(tag_updates)},
+    )
+
+
+def bulk_update_tag_validate_status(
+    table_name: str,
+    run_id: str,
+    tag_updates: list[dict],
+) -> None:
+    """Update VALIDATE stage status on existing TAG items for all tags concurrently.
+
+    Each entry in tag_updates must contain:
+        tag_id, status, valid_count, invalid_count
+    """
+    if not tag_updates:
+        return
+
+    with ThreadPoolExecutor(max_workers=_DYNAMODB_WRITE_CONCURRENCY) as executor:
+        future_to_tag_id = {}
+
+        for update in tag_updates:
+            tag_id = update["tag_id"]
+            future = executor.submit(
+                update_tag_validate_status,
+                table_name,
+                run_id,
+                tag_id,
+                update["status"],
+                update.get("valid_count", 0),
+                update.get("invalid_count", 0),
+            )
+            future_to_tag_id[future] = tag_id
+
+        for future in as_completed(future_to_tag_id):
+            tag_id = future_to_tag_id[future]
+            exc = future.exception()
+            if exc:
+                logger.warning(
+                    "Failed to update DynamoDB VALIDATE status for tag — continuing",
+                    extra={"run_id": run_id, "tag_id": tag_id, "error": str(exc)},
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -37,14 +136,15 @@ def fetch_transform_succeeded_tags(table_name: str, run_id: str) -> set[str]:
     universe from DynamoDB rather than deriving it from S3 file contents.
     """
     dynamodb = get_client("dynamodb")
-    pk = f"{PK_RUN_PREFIX}{run_id}"
+    partition_key_value = f"{PK_RUN_PREFIX}{run_id}"
     tag_ids: set[str] = set()
-    kwargs: dict = {
+
+    query_params: dict = {
         "TableName": table_name,
         "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
         "FilterExpression": "overall_status = :success",
         "ExpressionAttributeValues": {
-            ":pk":        {"S": pk},
+            ":pk":        {"S": partition_key_value},
             ":sk_prefix": {"S": SK_TAG_PREFIX},
             ":success":   {"S": "SUCCESS"},
         },
@@ -52,14 +152,20 @@ def fetch_transform_succeeded_tags(table_name: str, run_id: str) -> set[str]:
 
     try:
         while True:
-            response = dynamodb.query(**kwargs)
+            response = dynamodb.query(**query_params)
+
             for item in response.get("Items", []):
-                sk_value = item["SK"]["S"]
-                tag_ids.add(sk_value.removeprefix(SK_TAG_PREFIX))
-            last_key = response.get("LastEvaluatedKey")
-            if not last_key:
+                sort_key_value = item["SK"]["S"]
+                tag_id = sort_key_value.removeprefix(SK_TAG_PREFIX)
+                tag_ids.add(tag_id)
+
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            pagination_is_complete = last_evaluated_key is None
+            if pagination_is_complete:
                 break
-            kwargs["ExclusiveStartKey"] = last_key
+
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+
     except ClientError as exc:
         raise DynamoDBError(
             f"Failed to fetch transform-succeeded tags for run {run_id}: {exc}",
@@ -238,9 +344,14 @@ def update_run_transform_status(
     dynamodb = get_client("dynamodb")
     pk = f"{PK_RUN_PREFIX}{run_id}"
 
-    overall_update = "" if status == STATUS_RUNNING else ", overall_status = :status"
+    job_is_still_running = status == STATUS_RUNNING
+    if job_is_still_running:
+        overall_status_clause = ""
+    else:
+        overall_status_clause = ", overall_status = :status"
+
     set_clause = (
-        f"SET transform_status = :status{overall_update}"
+        f"SET transform_status = :status{overall_status_clause}"
         ", transform_tags_success = :tags_ok"
         ", transform_tags_failed = :tags_fail"
         ", transform_records_written = :written"
@@ -300,9 +411,14 @@ def update_run_validate_status(
     dynamodb = get_client("dynamodb")
     pk = f"{PK_RUN_PREFIX}{run_id}"
 
-    overall_update = "" if status == STATUS_RUNNING else ", overall_status = :status"
+    job_is_still_running = status == STATUS_RUNNING
+    if job_is_still_running:
+        overall_status_clause = ""
+    else:
+        overall_status_clause = ", overall_status = :status"
+
     set_clause = (
-        f"SET validate_status = :status{overall_update}"
+        f"SET validate_status = :status{overall_status_clause}"
         ", validate_tags_success = :tags_ok"
         ", validate_tags_failed = :tags_fail"
         ", validate_records_passed = :validated"
