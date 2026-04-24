@@ -1,22 +1,18 @@
 """Tests for transform_job.py — fault isolation and per-tag record counts."""
 
 import json
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import boto3
 import pytest
-from moto import mock_aws
 
 from glue_jobs.tests.conftest import (
     CLEANED_BUCKET,
-    QUARANTINE_BUCKET,
     RAW_BUCKET,
     RUN_ID,
     TABLE_NAME,
-    VALIDATED_BUCKET,
 )
-from shared.constants import PK_RUN_PREFIX, SK_TAG_PREFIX, STATUS_FAILED, STATUS_SUCCESS
+from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX, STATUS_FAILED, STATUS_SUCCESS
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +73,7 @@ def _valid_tag_payload(tag_id: str, measurement_count: int = 2) -> bytes:
 
 
 def _null_pk_tag_payload(tag_id: str) -> bytes:
-    """Tag payload where all measurements have null MeasurementID (primary key)."""
+    """Tag payload where all primary keys are null across every domain table."""
     payload = {
         "tag": {"TagID": None, "TagName": None, "Description": None, "UnitOfMeasure": None, "EquipmentID": None, "LocationID": None},
         "equipment": {"EquipmentID": None, "EquipmentName": None, "EquipmentType": None, "Manufacturer": None, "InstallDate": None},
@@ -110,6 +106,34 @@ def _upload_tag(s3_client, tag_id: str, body: bytes) -> None:
     )
 
 
+def _seed_tag_item(dynamodb_client, tag_id: str) -> None:
+    """Pre-create a TAG item with an empty stage_status map.
+
+    DynamoDB cannot SET a nested attribute path (stage_status.#TRANSFORM)
+    if the parent map does not already exist in the item. Seeding avoids
+    a ValidationException from the updater during tests.
+    """
+    dynamodb_client.put_item(
+        TableName=TABLE_NAME,
+        Item={
+            "PK": {"S": f"{PK_RUN_PREFIX}{RUN_ID}"},
+            "SK": {"S": f"{SK_TAG_PREFIX}{tag_id}"},
+            "stage_status": {"M": {}},
+        },
+    )
+
+
+def _seed_meta_item(dynamodb_client) -> None:
+    """Pre-create the RUN META item so update_run_transform_status can write to it."""
+    dynamodb_client.put_item(
+        TableName=TABLE_NAME,
+        Item={
+            "PK": {"S": f"{PK_RUN_PREFIX}{RUN_ID}"},
+            "SK": {"S": SK_META},
+        },
+    )
+
+
 def _get_tag_item(dynamodb_client, tag_id: str) -> dict:
     resp = dynamodb_client.get_item(
         TableName=TABLE_NAME,
@@ -125,21 +149,28 @@ def _get_tag_item(dynamodb_client, tag_id: str) -> dict:
 # Glue / sys.argv mocking helpers
 # ---------------------------------------------------------------------------
 
+# The job reads bucket and table names from SSM via load_ssm_config(environment).
+# GLUE_ARGS only needs the keys that getResolvedOptions actually resolves.
 GLUE_ARGS = {
     "JOB_NAME": "test-transform-job",
     "run_id": RUN_ID,
-    "RAW_BUCKET": RAW_BUCKET,
-    "CLEANED_BUCKET": CLEANED_BUCKET,
-    "PIPELINE_STATE_TABLE": TABLE_NAME,
+    "ENVIRONMENT": "test",
+}
+
+SSM_CONFIG = {
+    "raw-bucket-name": RAW_BUCKET,
+    "cleaned-bucket-name": CLEANED_BUCKET,
+    "pipeline-state-table": TABLE_NAME,
 }
 
 
 def _patch_glue(spark, mock_glue_job):
-    """Context manager stack — patches GlueContext/Job/args so main() can run."""
+    """Return a list of context managers that patch all Glue-specific entry points."""
     glue_ctx, job = mock_glue_job
     return [
         patch("glue_jobs.scripts.transform_job.getResolvedOptions", return_value=GLUE_ARGS),
         patch("glue_jobs.scripts.transform_job.create_glue_context", return_value=(glue_ctx, spark, job)),
+        patch("glue_jobs.scripts.transform_job.load_ssm_config", return_value=SSM_CONFIG),
     ]
 
 
@@ -150,11 +181,15 @@ def _patch_glue(spark, mock_glue_job):
 
 class TestTransformFaultIsolation:
     def test_all_tags_succeed(self, s3, dynamodb_table, spark, mock_glue_job):
+        for tag_id in ("TAG-001", "TAG-002"):
+            _seed_tag_item(dynamodb_table, tag_id)
+        _seed_meta_item(dynamodb_table)
+
         _upload_tag(s3, "TAG-001", _valid_tag_payload("TAG-001", measurement_count=3))
         _upload_tag(s3, "TAG-002", _valid_tag_payload("TAG-002", measurement_count=2))
 
         patches = _patch_glue(spark, mock_glue_job)
-        with patches[0], patches[1]:
+        with patches[0], patches[1], patches[2]:
             from glue_jobs.scripts import transform_job
             transform_job.main()
 
@@ -163,15 +198,15 @@ class TestTransformFaultIsolation:
 
         assert item_001["stage_status"]["M"]["TRANSFORM"]["S"] == STATUS_SUCCESS
         assert item_002["stage_status"]["M"]["TRANSFORM"]["S"] == STATUS_SUCCESS
-
-        # Records written should be > 0 for both tags
         assert int(item_001["transform_records_written"]["N"]) > 0
         assert int(item_002["transform_records_written"]["N"]) > 0
 
     def test_corrupt_tag_isolated_others_succeed(self, s3, dynamodb_table, spark, mock_glue_job):
+        for tag_id in ("TAG-001", "TAG-BAD"):
+            _seed_tag_item(dynamodb_table, tag_id)
+        _seed_meta_item(dynamodb_table)
+
         _upload_tag(s3, "TAG-001", _valid_tag_payload("TAG-001", measurement_count=2))
-        _upload_tag(s3, "TAG-002", _valid_tag_payload("TAG-002", measurement_count=2))
-        # Corrupt JSON — not valid JSON at all
         s3.put_object(
             Bucket=RAW_BUCKET,
             Key=f"raw/{RUN_ID}/TAG-BAD.json",
@@ -179,7 +214,7 @@ class TestTransformFaultIsolation:
         )
 
         patches = _patch_glue(spark, mock_glue_job)
-        with patches[0], patches[1]:
+        with patches[0], patches[1], patches[2]:
             from glue_jobs.scripts import transform_job
             transform_job.main()  # must NOT raise even though TAG-BAD is corrupt
 
@@ -191,11 +226,13 @@ class TestTransformFaultIsolation:
         assert good_item["stage_status"]["M"]["TRANSFORM"]["S"] == STATUS_SUCCESS
 
     def test_zero_usable_records_tag_marked_failed(self, s3, dynamodb_table, spark, mock_glue_job):
-        # All tables will have null primary keys → zero surviving rows
+        _seed_tag_item(dynamodb_table, "TAG-ZERO")
+        _seed_meta_item(dynamodb_table)
+
         _upload_tag(s3, "TAG-ZERO", _null_pk_tag_payload("TAG-ZERO"))
 
         patches = _patch_glue(spark, mock_glue_job)
-        with patches[0], patches[1]:
+        with patches[0], patches[1], patches[2]:
             from glue_jobs.scripts import transform_job
             transform_job.main()
 

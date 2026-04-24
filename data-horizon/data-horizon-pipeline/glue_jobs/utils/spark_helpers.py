@@ -130,11 +130,15 @@ def write_parquet_to_catalog(
     database: str,
     table_name: str,
     s3_path: str,
+    partition_cols: list[str] | None = None,
 ) -> None:
     """Write a DataFrame as snappy Parquet and register/update the Glue Data Catalog.
 
     Using enableUpdateCatalog=True means Athena can query the table
     immediately after the job finishes — no MSCK REPAIR TABLE needed.
+    When partition_cols is provided, Glue creates Hive-style subdirectories
+    (e.g., partition_date=2024-01-15/) and registers them in the Data Catalog,
+    enabling Athena partition pruning on those columns.
     """
     dynamic_frame = DynamicFrame.fromDF(dataframe, glue_ctx, table_name)
 
@@ -143,7 +147,7 @@ def write_parquet_to_catalog(
         path=s3_path,
         enableUpdateCatalog=True,
         updateBehavior="UPDATE_IN_DATABASE",
-        partitionKeys=[],
+        partitionKeys=partition_cols or [],
     )
     sink.setFormat("glueparquet", formatOptions={"compression": "snappy"})
     sink.setCatalogInfo(catalogDatabase=database, catalogTableName=table_name)

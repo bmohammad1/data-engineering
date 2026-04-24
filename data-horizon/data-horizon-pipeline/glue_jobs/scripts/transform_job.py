@@ -399,7 +399,8 @@ def main() -> None:
             },
         )
 
-    # Build the DynamoDB update payloads for all three outcome groups    failed_tag_updates = [
+    # Build the DynamoDB update payloads for all three outcome groups.
+    failed_tag_updates = [
         {"tag_id": tag_id, "status": STATUS_FAILED, "records_extracted": 0,
          "records_dropped": 0, "records_transformed": 0}
         for tag_id in corrupt_tag_ids

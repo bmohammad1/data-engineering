@@ -68,7 +68,7 @@ resource "aws_sfn_state_machine" "redshift_load" {
     redshift_master_username = var.redshift_master_username
     validated_bucket_name    = var.validated_bucket_name
     redshift_iam_role_arn    = var.redshift_iam_role_arn
-    sns_topic_arn            = var.sns_topic_arn
+    pipeline_state_table     = var.pipeline_state_table
   })
 
   tags = merge(var.tags, {

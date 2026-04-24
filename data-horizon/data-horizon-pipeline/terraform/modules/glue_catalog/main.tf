@@ -535,6 +535,15 @@ resource "aws_glue_catalog_table" "validated_measurements" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 
@@ -588,6 +597,15 @@ resource "aws_glue_catalog_table" "validated_alarms" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 
@@ -641,6 +659,15 @@ resource "aws_glue_catalog_table" "validated_maintenance" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 
@@ -690,6 +717,15 @@ resource "aws_glue_catalog_table" "validated_events" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 
@@ -857,6 +893,15 @@ resource "aws_glue_catalog_table" "validated_inventory" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 
@@ -910,6 +955,15 @@ resource "aws_glue_catalog_table" "validated_regulatory_compliance" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 
@@ -963,6 +1017,15 @@ resource "aws_glue_catalog_table" "validated_financial_forecasts" {
       name = "_ingested_at"
       type = "timestamp"
     }
+    columns {
+      name = "partition_date"
+      type = "date"
+    }
+  }
+
+  partition_keys {
+    name = "partition_date"
+    type = "date"
   }
 }
 

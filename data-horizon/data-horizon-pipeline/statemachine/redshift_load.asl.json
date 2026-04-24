@@ -1,13 +1,250 @@
 {
-  "Comment": "Child3: Placeholder skeleton",
-  "StartAt": "StartState",
+  "Comment": "Child4: Truncate-and-COPY all 13 staging tables from the validated S3 bucket into Redshift. Each table uses batchExecuteStatement so TRUNCATE + COPY run in a single transaction — a failed COPY rolls back the TRUNCATE, leaving the table intact. All 13 tables run in parallel via a Map state (MaxConcurrency 5). DynamoDB META is updated with load_status, load_started_at, load_end_time, and overall_status. On failure, raises RedshiftLoadFailed so the parent orchestrator handles alerting.",
+  "StartAt": "RecordLoadStart",
   "States": {
-    "StartState": {
-      "Type": "Pass",
-      "Next": "EndState"
+    "RecordLoadStart": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${pipeline_state_table}",
+        "Key": {
+          "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
+          "SK": { "S": "META" }
+        },
+        "UpdateExpression": "SET load_status = :status, load_started_at = :t",
+        "ExpressionAttributeValues": {
+          ":status": { "S": "RUNNING" },
+          ":t":      { "S.$": "$$.Execution.StartTime" }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RedshiftLoadFailed"
+        }
+      ],
+      "Next": "BuildTableList"
     },
-    "EndState": {
-      "Type": "Succeed"
+    "BuildTableList": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "tables": [
+          { "s3_key": "equipment",             "redshift_table": "staging.equipment" },
+          { "s3_key": "location",              "redshift_table": "staging.location" },
+          { "s3_key": "customer",              "redshift_table": "staging.customer" },
+          { "s3_key": "tag",                   "redshift_table": "staging.\"tag\"" },
+          { "s3_key": "measurements",          "redshift_table": "staging.measurement" },
+          { "s3_key": "alarms",                "redshift_table": "staging.alarm" },
+          { "s3_key": "maintenance",           "redshift_table": "staging.maintenance" },
+          { "s3_key": "events",                "redshift_table": "staging.event" },
+          { "s3_key": "contracts",             "redshift_table": "staging.customer_contract" },
+          { "s3_key": "billing",               "redshift_table": "staging.billing" },
+          { "s3_key": "inventory",             "redshift_table": "staging.inventory" },
+          { "s3_key": "regulatory_compliance", "redshift_table": "staging.regulatory_compliance" },
+          { "s3_key": "financial_forecasts",   "redshift_table": "staging.financial_forecast" }
+        ]
+      },
+      "Next": "LoadAllTables"
+    },
+    "LoadAllTables": {
+      "Type": "Map",
+      "ItemsPath": "$.tables",
+      "ItemSelector": {
+        "run_id.$": "$$.Execution.Input.run_id",
+        "s3_key.$": "$$.Map.Item.Value.s3_key",
+        "redshift_table.$": "$$.Map.Item.Value.redshift_table"
+      },
+      "MaxConcurrency": 5,
+      "ToleratedFailureCount": 0,
+      "Iterator": {
+        "StartAt": "TruncateAndCopy",
+        "States": {
+          "TruncateAndCopy": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:redshiftdata:batchExecuteStatement",
+            "Parameters": {
+              "ClusterIdentifier": "${redshift_cluster_id}",
+              "Database": "${redshift_database}",
+              "DbUser": "${redshift_master_username}",
+              "Sqls.$": "States.Array(States.Format('TRUNCATE TABLE {}', $.redshift_table), States.Format('COPY {} FROM ''s3://${validated_bucket_name}/validated/{}/{}'' IAM_ROLE ''${redshift_iam_role_arn}'' FORMAT PARQUET COMPUPDATE PRESET STATUPDATE ON', $.redshift_table, $.run_id, $.s3_key))"
+            },
+            "ResultSelector": {
+              "batch_id.$": "$.Id"
+            },
+            "ResultPath": "$.batch_result",
+            "Retry": [
+              {
+                "ErrorEquals": ["Redshift.RedshiftDataException", "States.TaskFailed"],
+                "IntervalSeconds": 15,
+                "MaxAttempts": 2,
+                "BackoffRate": 2
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "TableLoadFailed"
+              }
+            ],
+            "Next": "WaitForBatch"
+          },
+          "WaitForBatch": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "CheckBatchStatus"
+          },
+          "CheckBatchStatus": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:redshiftdata:describeStatement",
+            "Parameters": {
+              "Id.$": "$.batch_result.batch_id"
+            },
+            "ResultSelector": {
+              "status.$": "$.Status",
+              "error.$": "$.Error"
+            },
+            "ResultPath": "$.batch_poll",
+            "Retry": [
+              {
+                "ErrorEquals": ["States.TaskFailed"],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 3,
+                "BackoffRate": 1.5
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "TableLoadFailed"
+              }
+            ],
+            "Next": "IsBatchDone"
+          },
+          "IsBatchDone": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.batch_poll.status",
+                "StringEquals": "FINISHED",
+                "Next": "TableLoadSucceeded"
+              },
+              {
+                "Variable": "$.batch_poll.status",
+                "StringEquals": "FAILED",
+                "Next": "TableLoadFailed"
+              },
+              {
+                "Variable": "$.batch_poll.status",
+                "StringEquals": "ABORTED",
+                "Next": "TableLoadFailed"
+              }
+            ],
+            "Default": "WaitForBatch"
+          },
+          "TableLoadSucceeded": {
+            "Type": "Pass",
+            "Parameters": {
+              "s3_key.$": "$.s3_key",
+              "redshift_table.$": "$.redshift_table",
+              "status": "LOADED"
+            },
+            "End": true
+          },
+          "TableLoadFailed": {
+            "Type": "Fail",
+            "Error": "TableLoadFailed",
+            "Cause": "TRUNCATE + COPY batch rolled back — table left intact"
+          }
+        }
+      },
+      "ResultPath": "$.load_results",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "MarkLoadFailed"
+        }
+      ],
+      "Next": "MarkLoadSuccess"
+    },
+    "MarkLoadSuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${pipeline_state_table}",
+        "Key": {
+          "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
+          "SK": { "S": "META" }
+        },
+        "UpdateExpression": "SET load_status = :status, load_end_time = :t, overall_status = :status",
+        "ExpressionAttributeValues": {
+          ":status": { "S": "SUCCESS" },
+          ":t":      { "S.$": "$$.State.EnteredTime" }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "RedshiftLoadSuccess"
+    },
+    "RedshiftLoadSuccess": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "status": "SUCCESS",
+        "tables_loaded": 13
+      },
+      "End": true
+    },
+    "MarkLoadFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${pipeline_state_table}",
+        "Key": {
+          "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
+          "SK": { "S": "META" }
+        },
+        "UpdateExpression": "SET load_status = :status, load_end_time = :t, overall_status = :status",
+        "ExpressionAttributeValues": {
+          ":status": { "S": "FAILED" },
+          ":t":      { "S.$": "$$.State.EnteredTime" }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "RedshiftLoadFailed"
+    },
+    "RedshiftLoadFailed": {
+      "Type": "Fail",
+      "Error": "RedshiftLoadFailed",
+      "Cause": "One or more table loads failed"
     }
   }
 }
