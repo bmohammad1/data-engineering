@@ -1,5 +1,5 @@
 {
-  "Comment": "Child4: Truncate-and-COPY all 13 staging tables from the validated S3 bucket into Redshift. Each table uses batchExecuteStatement so TRUNCATE + COPY run in a single transaction — a failed COPY rolls back the TRUNCATE, leaving the table intact. All 13 tables run in parallel via a Map state (MaxConcurrency 5). DynamoDB META is updated with load_status, load_started_at, load_end_time, and overall_status. On failure, raises RedshiftLoadFailed so the parent orchestrator handles alerting.",
+  "Comment": "Child4: Truncate-and-COPY all 13 staging tables from the validated S3 bucket into Redshift. Each table uses batchExecuteStatement so TRUNCATE + COPY run in a single transaction — a failed COPY rolls back the TRUNCATE, leaving the table intact. All 13 tables always run to completion (ToleratedFailureCount 13). After the Map, failed tables are collected and written to DynamoDB so operators can re-run only those tables. On any failure, raises RedshiftLoadFailed so the parent orchestrator handles alerting.",
   "StartAt": "RecordLoadStart",
   "States": {
     "RecordLoadStart": {
@@ -66,10 +66,21 @@
         "redshift_table.$": "$$.Map.Item.Value.redshift_table"
       },
       "MaxConcurrency": 5,
-      "ToleratedFailureCount": 0,
+      "ToleratedFailureCount": 13,
       "Iterator": {
-        "StartAt": "TruncateAndCopy",
+        "StartAt": "BuildSqls",
         "States": {
+          "BuildSqls": {
+            "Type": "Pass",
+            "Parameters": {
+              "run_id.$": "$.run_id",
+              "s3_key.$": "$.s3_key",
+              "redshift_table.$": "$.redshift_table",
+              "sql_truncate.$": "States.Format('TRUNCATE TABLE {}', $.redshift_table)",
+              "sql_copy.$":     "States.Format('COPY {} FROM \\'s3://${validated_bucket_name}/validated/{}/{}\\' IAM_ROLE \\'${redshift_iam_role_arn}\\' FORMAT AS PARQUET STATUPDATE ON', $.redshift_table, $.run_id, $.s3_key)"
+            },
+            "Next": "TruncateAndCopy"
+          },
           "TruncateAndCopy": {
             "Type": "Task",
             "Resource": "arn:aws:states:::aws-sdk:redshiftdata:batchExecuteStatement",
@@ -77,7 +88,7 @@
               "ClusterIdentifier": "${redshift_cluster_id}",
               "Database": "${redshift_database}",
               "DbUser": "${redshift_master_username}",
-              "Sqls.$": "States.Array(States.Format('TRUNCATE TABLE {}', $.redshift_table), States.Format('COPY {} FROM ''s3://${validated_bucket_name}/validated/{}/{}'' IAM_ROLE ''${redshift_iam_role_arn}'' FORMAT PARQUET COMPUPDATE PRESET STATUPDATE ON', $.redshift_table, $.run_id, $.s3_key))"
+              "Sqls.$": "States.Array($.sql_truncate, $.sql_copy)"
             },
             "ResultSelector": {
               "batch_id.$": "$.Id"
@@ -112,8 +123,7 @@
               "Id.$": "$.batch_result.batch_id"
             },
             "ResultSelector": {
-              "status.$": "$.Status",
-              "error.$": "$.Error"
+              "status.$": "$.Status"
             },
             "ResultPath": "$.batch_poll",
             "Retry": [
@@ -164,21 +174,38 @@
             "End": true
           },
           "TableLoadFailed": {
-            "Type": "Fail",
-            "Error": "TableLoadFailed",
-            "Cause": "TRUNCATE + COPY batch rolled back — table left intact"
+            "Type": "Pass",
+            "Parameters": {
+              "s3_key.$": "$.s3_key",
+              "redshift_table.$": "$.redshift_table",
+              "status": "FAILED"
+            },
+            "End": true
           }
         }
       },
       "ResultPath": "$.load_results",
-      "Catch": [
+      "Next": "SerializeResults"
+    },
+    "SerializeResults": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "load_results.$": "$.load_results",
+        "load_results_str.$": "States.JsonToString($.load_results)"
+      },
+      "Next": "CheckForFailures"
+    },
+    "CheckForFailures": {
+      "Type": "Choice",
+      "Choices": [
         {
-          "ErrorEquals": ["States.ALL"],
-          "ResultPath": "$.error",
+          "Variable": "$.load_results_str",
+          "StringMatches": "*\"FAILED\"*",
           "Next": "MarkLoadFailed"
         }
       ],
-      "Next": "MarkLoadSuccess"
+      "Default": "MarkLoadSuccess"
     },
     "MarkLoadSuccess": {
       "Type": "Task",
@@ -189,10 +216,11 @@
           "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
           "SK": { "S": "META" }
         },
-        "UpdateExpression": "SET load_status = :status, load_end_time = :t, overall_status = :status",
+        "UpdateExpression": "SET load_status = :status, load_end_time = :t, overall_status = :status, load_table_results = :results",
         "ExpressionAttributeValues": {
-          ":status": { "S": "SUCCESS" },
-          ":t":      { "S.$": "$$.State.EnteredTime" }
+          ":status":  { "S": "SUCCESS" },
+          ":t":       { "S.$": "$$.State.EnteredTime" },
+          ":results": { "S.$": "$.load_results_str" }
         }
       },
       "ResultPath": null,
@@ -224,10 +252,12 @@
           "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
           "SK": { "S": "META" }
         },
-        "UpdateExpression": "SET load_status = :status, load_end_time = :t, overall_status = :status",
+        "UpdateExpression": "SET load_status = :load_status, load_end_time = :t, overall_status = :overall, load_table_results = :results",
         "ExpressionAttributeValues": {
-          ":status": { "S": "FAILED" },
-          ":t":      { "S.$": "$$.State.EnteredTime" }
+          ":load_status": { "S": "FAILED" },
+          ":overall":     { "S": "FAILED" },
+          ":t":           { "S.$": "$$.State.EnteredTime" },
+          ":results":     { "S.$": "$.load_results_str" }
         }
       },
       "ResultPath": null,
@@ -244,7 +274,7 @@
     "RedshiftLoadFailed": {
       "Type": "Fail",
       "Error": "RedshiftLoadFailed",
-      "Cause": "One or more table loads failed"
+      "Cause": "One or more table loads failed — see load_table_results in DynamoDB META for re-run list"
     }
   }
 }

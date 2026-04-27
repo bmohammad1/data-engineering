@@ -307,18 +307,18 @@ def main() -> None:
     for table_name in TABLE_SCHEMAS:
         table_start_time = time.perf_counter()
         try:
-            extracted_dataframe = _extract_table(raw_dataframe, table_name)
+            extracted_dataframe = _extract_table(raw_dataframe, table_name).cache()
+            transformed_dataframe = _apply_transformations(extracted_dataframe, table_name, run_id).cache()
 
-            # Snapshot row counts before null-PK rows are dropped.
+            # Capture the running total before accumulating this table's counts so
+            # the per-table record_count can be derived as a delta — no extra Spark action needed.
+            total_transformed_before = sum(v["transformed"] for v in tag_stats.values())
             _accumulate_tag_counts(extracted_dataframe, "extracted", tag_stats)
-
-            transformed_dataframe = _apply_transformations(extracted_dataframe, table_name, run_id)
-
-            # Snapshot row counts after null-PK rows are dropped.
             _accumulate_tag_counts(transformed_dataframe, "transformed", tag_stats)
-
-            record_count = transformed_dataframe.count()
+            record_count = sum(v["transformed"] for v in tag_stats.values()) - total_transformed_before
             total_records_written += record_count
+
+            extracted_dataframe.unpersist()
 
             cleaned_s3_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
 
@@ -340,6 +340,8 @@ def main() -> None:
                 )
             else:
                 write_parquet_to_s3(transformed_dataframe, cleaned_s3_path)
+
+            transformed_dataframe.unpersist()
 
             table_duration_ms = round((time.perf_counter() - table_start_time) * 1_000, 2)
             logger.info(

@@ -238,6 +238,7 @@ data "aws_iam_policy_document" "step_functions" {
   statement {
     effect = "Allow"
     actions = [
+      "redshift-data:BatchExecuteStatement",
       "redshift-data:ExecuteStatement",
       "redshift-data:DescribeStatement",
       "redshift-data:GetStatementResult",
