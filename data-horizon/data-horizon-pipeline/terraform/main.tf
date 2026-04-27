@@ -7,6 +7,7 @@ module "vpc" {
   source = "./modules/vpc"
 
   name_prefix           = local.name_prefix
+  aws_region            = var.aws_region
   vpc_cidr              = var.vpc_cidr
   private_subnet_cidr   = var.private_subnet_cidr
   private_subnet_cidr_2 = var.private_subnet_cidr_2

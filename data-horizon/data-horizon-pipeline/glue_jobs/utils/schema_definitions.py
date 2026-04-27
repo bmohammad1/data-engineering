@@ -158,6 +158,68 @@ LIST_TABLES = {
     "financial_forecasts",
 }
 
+# Maps PascalCase Spark column names to snake_case Redshift staging column names.
+# Redshift COPY FORMAT AS PARQUET matches by column name — the Parquet column
+# names must exactly match the staging table column names (case-insensitive in
+# Redshift, but Parquet metadata preserves case, so we standardise to lowercase).
+REDSHIFT_COLUMN_MAP: dict[str, dict[str, str]] = {
+    "tag": {
+        "TagID": "tag_id", "TagName": "tag_name", "Description": "description",
+        "UnitOfMeasure": "unit_of_measure", "EquipmentID": "equipment_id", "LocationID": "location_id",
+    },
+    "equipment": {
+        "EquipmentID": "equipment_id", "EquipmentName": "equipment_name",
+        "EquipmentType": "equipment_type", "Manufacturer": "manufacturer", "InstallDate": "install_date",
+    },
+    "location": {
+        "LocationID": "location_id", "SiteName": "site_name",
+        "Area": "area", "GPSCoordinates": "gps_coordinates",
+    },
+    "customer": {
+        "CustomerID": "customer_id", "CustomerName": "customer_name",
+        "Industry": "industry", "ContactInfo": "contact_info", "Region": "region",
+    },
+    "measurements": {
+        "MeasurementID": "measurement_id", "TagID": "tag_id", "Timestamp": "timestamp",
+        "Value": "value", "QualityFlag": "quality_flag",
+    },
+    "alarms": {
+        "AlarmID": "alarm_id", "TagID": "tag_id", "AlarmType": "alarm_type",
+        "ThresholdValue": "threshold_value", "Timestamp": "timestamp", "Status": "status",
+    },
+    "maintenance": {
+        "MaintenanceID": "maintenance_id", "TagID": "tag_id", "WorkOrderID": "work_order_id",
+        "MaintenanceDate": "maintenance_date", "ActionTaken": "action_taken", "Technician": "technician",
+    },
+    "events": {
+        "EventID": "event_id", "TagID": "tag_id", "EventType": "event_type",
+        "Timestamp": "timestamp", "Notes": "notes",
+    },
+    "contracts": {
+        "ContractID": "contract_id", "CustomerID": "customer_id", "TagID": "tag_id",
+        "ContractStartDate": "contract_start_date", "ContractEndDate": "contract_end_date",
+        "ContractVolume": "contract_volume", "PricePerUnit": "price_per_unit",
+    },
+    "billing": {
+        "BillingID": "billing_id", "TagID": "tag_id", "CustomerID": "customer_id",
+        "BillingPeriod": "billing_period", "ConsumptionVolume": "consumption_volume",
+        "TotalAmount": "total_amount", "PaymentStatus": "payment_status",
+    },
+    "inventory": {
+        "InventoryID": "inventory_id", "TagID": "tag_id", "MaterialType": "material_type",
+        "Quantity": "quantity", "StorageLocation": "storage_location", "LastUpdated": "last_updated",
+    },
+    "regulatory_compliance": {
+        "ComplianceID": "compliance_id", "TagID": "tag_id", "RegulationName": "regulation_name",
+        "InspectionDate": "inspection_date", "Status": "status", "Inspector": "inspector",
+    },
+    "financial_forecasts": {
+        "ForecastID": "forecast_id", "TagID": "tag_id", "ForecastDate": "forecast_date",
+        "ExpectedConsumption": "expected_consumption", "ExpectedRevenue": "expected_revenue",
+        "RiskFactor": "risk_factor",
+    },
+}
+
 # Primary key column for each table — used for deduplication.
 PRIMARY_KEYS: dict[str, str] = {
     "tag":                   "TagID",

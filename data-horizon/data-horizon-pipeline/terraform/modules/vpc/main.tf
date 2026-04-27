@@ -56,6 +56,17 @@ resource "aws_route_table_association" "private_2" {
   route_table_id = aws_route_table.private.id
 }
 
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.this.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-s3-endpoint"
+  })
+}
+
 resource "aws_security_group" "redshift" {
   name_prefix = "${var.name_prefix}-redshift-"
   description = "Security group for Redshift cluster"

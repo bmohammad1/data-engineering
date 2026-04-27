@@ -18,6 +18,11 @@ variable "private_subnet_cidr_2" {
   type        = string
 }
 
+variable "aws_region" {
+  description = "AWS region (used to construct the S3 VPC endpoint service name)"
+  type        = string
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

@@ -23,9 +23,8 @@ import sys
 import time
 
 from awsglue.utils import getResolvedOptions
-from pyspark.sql import functions as F
 
-from utils.schema_definitions import TABLE_SCHEMAS
+from utils.schema_definitions import REDSHIFT_COLUMN_MAP, TABLE_SCHEMAS
 from utils.spark_helpers import (
     add_audit_columns,
     create_glue_context,
@@ -46,24 +45,6 @@ from shared.logger import configure_logging, run_id_ctx
 configure_logging()
 logger = logging.getLogger(__name__)
 
-
-# Maps each fact table to the source column used to derive the partition date.
-# Tables absent from this map are written flat (no partitioning) because they
-# are dimension or transactional tables with low row counts where partitioning
-# would create too many tiny files relative to the data volume.
-_PARTITION_SOURCE_COLUMN: dict[str, str] = {
-    "measurements":          "Timestamp",
-    "alarms":                "Timestamp",
-    "events":                "Timestamp",
-    "inventory":             "LastUpdated",
-    "maintenance":           "MaintenanceDate",
-    "regulatory_compliance": "InspectionDate",
-    "financial_forecasts":   "ForecastDate",
-}
-
-# Name of the derived date column — kept consistent with the cleaned layer so
-# Athena partition projection and downstream Glue jobs rely on a single name.
-_PARTITION_DATE_COLUMN = "partition_date"
 
 
 # ---------------------------------------------------------------------------
@@ -128,25 +109,22 @@ def main() -> None:
             if valid_record_count > 0:
                 catalog_table_name = f"validated_{table_name}"
                 validated_path = f"s3://{validated_bucket}/validated/{run_id}/{table_name}/"
-                valid_dataframe_with_audit = add_audit_columns(valid_dataframe, run_id, table_name)
 
-                source_col = _PARTITION_SOURCE_COLUMN.get(table_name)
-                if source_col is not None:
-                    valid_dataframe_with_audit = valid_dataframe_with_audit.withColumn(
-                        _PARTITION_DATE_COLUMN,
-                        F.to_date(F.col(source_col)),
-                    )
-                    partition_cols = [_PARTITION_DATE_COLUMN]
-                else:
-                    partition_cols = None
+                # Rename PascalCase Spark columns to snake_case so they match the
+                # Redshift staging table column names. COPY FORMAT AS PARQUET maps
+                # by name — a mismatch produces 0 inserted rows without error.
+                rename_map = REDSHIFT_COLUMN_MAP[table_name]
+                renamed_dataframe = valid_dataframe
+                for pascal_col, snake_col in rename_map.items():
+                    renamed_dataframe = renamed_dataframe.withColumnRenamed(pascal_col, snake_col)
 
                 write_parquet_to_catalog(
                     glue_ctx,
-                    valid_dataframe_with_audit,
+                    renamed_dataframe.coalesce(1),
                     glue_database,
                     catalog_table_name,
                     validated_path,
-                    partition_cols=partition_cols,
+                    partition_cols=None,
                 )
 
             if invalid_record_count > 0:

@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS staging.equipment (
     equipment_type  VARCHAR(50)   NOT NULL,
     manufacturer    VARCHAR(100)  NOT NULL,
     install_date    DATE          NOT NULL,
-    _loaded_at      TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (equipment_id)
 )
 DISTSTYLE ALL
@@ -19,7 +18,6 @@ CREATE TABLE IF NOT EXISTS staging.location (
     site_name       VARCHAR(100)  NOT NULL,
     area            VARCHAR(100)  NOT NULL,
     gps_coordinates VARCHAR(50)   NOT NULL,
-    _loaded_at      TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (location_id)
 )
 DISTSTYLE ALL
@@ -31,7 +29,6 @@ CREATE TABLE IF NOT EXISTS staging.customer (
     industry        VARCHAR(50)   NOT NULL,
     contact_info    VARCHAR(200)  NOT NULL,
     region          VARCHAR(50)   NOT NULL,
-    _loaded_at      TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (customer_id)
 )
 DISTSTYLE ALL
@@ -44,7 +41,6 @@ CREATE TABLE IF NOT EXISTS staging."tag" (
     unit_of_measure VARCHAR(20)   NOT NULL,
     equipment_id    VARCHAR(20)   NOT NULL,
     location_id     VARCHAR(20)   NOT NULL,
-    _loaded_at      TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (tag_id)
 )
 DISTSTYLE ALL
@@ -60,7 +56,6 @@ CREATE TABLE IF NOT EXISTS staging.measurement (
     timestamp       TIMESTAMP         NOT NULL,
     value           DOUBLE PRECISION  NOT NULL,
     quality_flag    VARCHAR(20)       NOT NULL,
-    _loaded_at      TIMESTAMP         DEFAULT GETDATE(),
     PRIMARY KEY (measurement_id)
 )
 DISTKEY (tag_id)
@@ -73,7 +68,6 @@ CREATE TABLE IF NOT EXISTS staging.alarm (
     threshold_value DOUBLE PRECISION  NOT NULL,
     timestamp       TIMESTAMP         NOT NULL,
     status          VARCHAR(20)       NOT NULL,
-    _loaded_at      TIMESTAMP         DEFAULT GETDATE(),
     PRIMARY KEY (alarm_id)
 )
 DISTKEY (tag_id)
@@ -86,7 +80,6 @@ CREATE TABLE IF NOT EXISTS staging.maintenance (
     maintenance_date DATE          NOT NULL,
     action_taken     VARCHAR(200)  NOT NULL,
     technician       VARCHAR(100)  NOT NULL,
-    _loaded_at       TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (maintenance_id)
 )
 DISTKEY (tag_id)
@@ -98,7 +91,6 @@ CREATE TABLE IF NOT EXISTS staging.event (
     event_type  VARCHAR(30)   NOT NULL,
     timestamp   TIMESTAMP     NOT NULL,
     notes       VARCHAR(500)  NOT NULL,
-    _loaded_at  TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (event_id)
 )
 DISTKEY (tag_id)
@@ -112,7 +104,6 @@ CREATE TABLE IF NOT EXISTS staging.customer_contract (
     contract_end_date   DATE              NOT NULL,
     contract_volume     DOUBLE PRECISION  NOT NULL,
     price_per_unit      DOUBLE PRECISION  NOT NULL,
-    _loaded_at          TIMESTAMP         DEFAULT GETDATE(),
     PRIMARY KEY (contract_id)
 )
 DISTKEY (tag_id)
@@ -126,7 +117,6 @@ CREATE TABLE IF NOT EXISTS staging.billing (
     consumption_volume  DOUBLE PRECISION  NOT NULL,
     total_amount        DOUBLE PRECISION  NOT NULL,
     payment_status      VARCHAR(20)       NOT NULL,
-    _loaded_at          TIMESTAMP         DEFAULT GETDATE(),
     PRIMARY KEY (billing_id)
 )
 DISTKEY (tag_id)
@@ -139,7 +129,6 @@ CREATE TABLE IF NOT EXISTS staging.inventory (
     quantity         INTEGER       NOT NULL,
     storage_location VARCHAR(100)  NOT NULL,
     last_updated     TIMESTAMP     NOT NULL,
-    _loaded_at       TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (inventory_id)
 )
 DISTKEY (tag_id)
@@ -152,7 +141,6 @@ CREATE TABLE IF NOT EXISTS staging.regulatory_compliance (
     inspection_date DATE          NOT NULL,
     status          VARCHAR(30)   NOT NULL,
     inspector       VARCHAR(100)  NOT NULL,
-    _loaded_at      TIMESTAMP     DEFAULT GETDATE(),
     PRIMARY KEY (compliance_id)
 )
 DISTKEY (tag_id)
@@ -165,7 +153,6 @@ CREATE TABLE IF NOT EXISTS staging.financial_forecast (
     expected_consumption DOUBLE PRECISION  NOT NULL,
     expected_revenue     DOUBLE PRECISION  NOT NULL,
     risk_factor          DOUBLE PRECISION  NOT NULL,
-    _loaded_at           TIMESTAMP         DEFAULT GETDATE(),
     PRIMARY KEY (forecast_id)
 )
 DISTKEY (tag_id)

@@ -65,7 +65,7 @@
         "s3_key.$": "$$.Map.Item.Value.s3_key",
         "redshift_table.$": "$$.Map.Item.Value.redshift_table"
       },
-      "MaxConcurrency": 5,
+      "MaxConcurrency": 1,
       "ToleratedFailureCount": 13,
       "Iterator": {
         "StartAt": "BuildSqls",
@@ -77,7 +77,7 @@
               "s3_key.$": "$.s3_key",
               "redshift_table.$": "$.redshift_table",
               "sql_truncate.$": "States.Format('TRUNCATE TABLE {}', $.redshift_table)",
-              "sql_copy.$":     "States.Format('COPY {} FROM \\'s3://${validated_bucket_name}/validated/{}/{}\\' IAM_ROLE \\'${redshift_iam_role_arn}\\' FORMAT AS PARQUET STATUPDATE ON', $.redshift_table, $.run_id, $.s3_key)"
+              "sql_copy.$":     "States.Format('COPY {} FROM \\'s3://${validated_bucket_name}/validated/{}/{}\\' IAM_ROLE \\'${redshift_iam_role_arn}\\' FORMAT AS PARQUET STATUPDATE OFF', $.redshift_table, $.run_id, $.s3_key)"
             },
             "Next": "TruncateAndCopy"
           },
