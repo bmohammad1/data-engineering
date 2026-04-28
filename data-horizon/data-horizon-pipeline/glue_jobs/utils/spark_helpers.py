@@ -28,6 +28,13 @@ def create_glue_context(job_name: str, args: dict) -> tuple[GlueContext, SparkSe
     glue_ctx = GlueContext(sc)
     spark = glue_ctx.spark_session
 
+    # Tune shuffle partitions to match available executor cores (4 × 4 cores for
+    # 2 × G.1X) and enable AQE so Spark automatically coalesces small partitions
+    # at runtime — both are no-ops if already set via spark-submit.
+    spark.conf.set("spark.sql.shuffle.partitions", "16")
+    spark.conf.set("spark.sql.adaptive.enabled", "true")
+    spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
+
     job = Job(glue_ctx)
     job.init(job_name, args)
 
@@ -156,7 +163,10 @@ def write_parquet_to_catalog(
 
 def add_audit_columns(dataframe: DataFrame, run_id: str, source_table: str) -> DataFrame:
     """Append pipeline audit columns to a DataFrame."""
-    dataframe_with_run_id = dataframe.withColumn("_run_id", F.lit(run_id))
-    dataframe_with_source = dataframe_with_run_id.withColumn("_source_table", F.lit(source_table))
-    dataframe_with_timestamp = dataframe_with_source.withColumn("_ingested_at", F.current_timestamp())
-    return dataframe_with_timestamp
+    existing_columns = [F.col(column_name) for column_name in dataframe.columns]
+    audit_columns = [
+        F.lit(run_id).alias("_run_id"),
+        F.lit(source_table).alias("_source_table"),
+        F.current_timestamp().alias("_ingested_at"),
+    ]
+    return dataframe.select(*existing_columns, *audit_columns)

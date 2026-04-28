@@ -102,6 +102,8 @@ def main() -> None:
             table_dataframe = read_parquet_from_s3(glue_ctx, cleaned_path, table_schema)
 
             valid_dataframe, invalid_dataframe = apply_validation(table_dataframe, table_name)
+            valid_dataframe = valid_dataframe.cache()
+            invalid_dataframe = invalid_dataframe.cache()
 
             valid_record_count = valid_dataframe.count()
             invalid_record_count = invalid_dataframe.count()
@@ -120,40 +122,37 @@ def main() -> None:
 
                 write_parquet_to_catalog(
                     glue_ctx,
-                    renamed_dataframe.coalesce(1),
+                    renamed_dataframe,
                     glue_database,
                     catalog_table_name,
                     validated_path,
                     partition_cols=None,
                 )
 
+                if "TagID" in valid_dataframe.columns:
+                    for row in valid_dataframe.groupBy("TagID").count().collect():
+                        tag_id = row.TagID
+                        if tag_id:
+                            tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
+                            tag_counts[tag_id]["valid"] += row["count"]
+
             if invalid_record_count > 0:
                 quarantine_path = f"s3://{quarantine_bucket}/quarantine/{run_id}/{table_name}/"
                 invalid_dataframe_with_audit = add_audit_columns(invalid_dataframe, run_id, table_name)
                 write_json_to_s3(invalid_dataframe_with_audit, quarantine_path)
 
+                if "TagID" in invalid_dataframe.columns:
+                    for row in invalid_dataframe.groupBy("TagID").count().collect():
+                        tag_id = row.TagID
+                        if tag_id:
+                            tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
+                            tag_counts[tag_id]["invalid"] += row["count"]
+
+            valid_dataframe.unpersist()
+            invalid_dataframe.unpersist()
+
             total_valid += valid_record_count
             total_quarantined += invalid_record_count
-
-            # Accumulate per-tag valid counts for DynamoDB outcome classification.
-            table_has_tag_id_column = "TagID" in valid_dataframe.columns
-            if table_has_tag_id_column:
-                rows_per_tag = valid_dataframe.groupBy("TagID").count().collect()
-                for row in rows_per_tag:
-                    tag_id = row.TagID
-                    if tag_id:
-                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
-                        tag_counts[tag_id]["valid"] += row["count"]
-
-            # Accumulate per-tag invalid counts for DynamoDB outcome classification.
-            table_has_tag_id_in_invalid = "TagID" in invalid_dataframe.columns
-            if table_has_tag_id_in_invalid:
-                rows_per_tag = invalid_dataframe.groupBy("TagID").count().collect()
-                for row in rows_per_tag:
-                    tag_id = row.TagID
-                    if tag_id:
-                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
-                        tag_counts[tag_id]["invalid"] += row["count"]
 
             table_duration_ms = round((time.perf_counter() - table_start_time) * 1_000, 2)
             logger.info(

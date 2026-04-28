@@ -134,13 +134,16 @@ def _build_rules() -> dict[str, list[tuple[str, Column]]]:
     }
 
 
+_TABLE_RULES: dict[str, list[tuple[str, Column]]] = _build_rules()
+
+
 def apply_validation(dataframe: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
     """Split dataframe into (valid_dataframe, invalid_dataframe) based on per-table rules.
 
     invalid_dataframe gets an extra _validation_errors column listing every
     rule name that failed, separated by '; '.
     """
-    table_rules = _build_rules().get(table, [])
+    table_rules = _TABLE_RULES.get(table, [])
 
     table_has_no_rules = len(table_rules) == 0
     if table_has_no_rules:

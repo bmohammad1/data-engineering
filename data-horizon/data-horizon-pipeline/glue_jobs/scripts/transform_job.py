@@ -253,7 +253,7 @@ def _accumulate_tag_counts(
     for row in rows_per_tag:
         tag_id = row.TagID
         if tag_id:
-            tag_stats.setdefault(tag_id, {"extracted": 0, "transformed": 0})
+            tag_stats.setdefault(tag_id, {"transformed": 0})
             tag_stats[tag_id][count_key] += row["count"]
 
 
@@ -313,7 +313,6 @@ def main() -> None:
             # Capture the running total before accumulating this table's counts so
             # the per-table record_count can be derived as a delta — no extra Spark action needed.
             total_transformed_before = sum(v["transformed"] for v in tag_stats.values())
-            _accumulate_tag_counts(extracted_dataframe, "extracted", tag_stats)
             _accumulate_tag_counts(transformed_dataframe, "transformed", tag_stats)
             record_count = sum(v["transformed"] for v in tag_stats.values()) - total_transformed_before
             total_records_written += record_count
@@ -372,7 +371,6 @@ def main() -> None:
 
     tags_success: set[str] = set()
     tags_failed: set[str] = corrupt_tag_ids | zero_record_tags
-    total_records_dropped = 0
 
     # Log each failure outcome individually — logging is cheap and preserves
     # per-tag visibility in CloudWatch without adding DynamoDB call overhead.
@@ -389,44 +387,36 @@ def main() -> None:
         )
 
     for tag_id in zero_record_tags:
-        records_extracted = tag_stats.get(tag_id, {}).get("extracted", 0)
         logger.error(
             "Tag transform failed — zero usable records after cast",
             extra={
                 "run_id": run_id,
                 "tag_id": tag_id,
                 "failure_reason": "zero_usable_records",
-                "records_extracted": records_extracted,
                 "records_transformed": 0,
             },
         )
 
     # Build the DynamoDB update payloads for all three outcome groups.
     failed_tag_updates = [
-        {"tag_id": tag_id, "status": STATUS_FAILED, "records_extracted": 0,
-         "records_dropped": 0, "records_transformed": 0}
+        {"tag_id": tag_id, "status": STATUS_FAILED,
+         "records_extracted": 0, "records_dropped": 0, "records_transformed": 0}
         for tag_id in corrupt_tag_ids
     ] + [
         {"tag_id": tag_id, "status": STATUS_FAILED,
-         "records_extracted": tag_stats.get(tag_id, {}).get("extracted", 0),
-         "records_dropped": tag_stats.get(tag_id, {}).get("extracted", 0),
-         "records_transformed": 0}
+         "records_extracted": 0, "records_dropped": 0, "records_transformed": 0}
         for tag_id in zero_record_tags
     ]
 
     success_tag_updates = []
     for tag_id in tags_with_output:
-        tag_stats_entry = tag_stats.get(tag_id, {"extracted": 0, "transformed": 0})
-        records_extracted = tag_stats_entry["extracted"]
-        records_transformed = tag_stats_entry["transformed"]
-        records_dropped = records_extracted - records_transformed
-        total_records_dropped += records_dropped
+        records_transformed = tag_stats.get(tag_id, {"transformed": 0})["transformed"]
         tags_success.add(tag_id)
         success_tag_updates.append({
             "tag_id": tag_id,
             "status": STATUS_SUCCESS,
-            "records_extracted": records_extracted,
-            "records_dropped": records_dropped,
+            "records_extracted": records_transformed,
+            "records_dropped": 0,
             "records_transformed": records_transformed,
         })
 
@@ -442,7 +432,7 @@ def main() -> None:
         transform_tags_success=len(tags_success),
         transform_tags_failed=len(tags_failed),
         records_transformed=total_records_written,
-        records_dropped=total_records_dropped,
+        records_dropped=0,
         duration_ms=int(total_duration_ms),
     )
 
@@ -451,7 +441,6 @@ def main() -> None:
         extra={
             "run_id": run_id,
             "total_records": total_records_written,
-            "total_dropped": total_records_dropped,
             "tags_success": len(tags_success),
             "tags_failed": len(tags_failed),
             "total_duration_ms": total_duration_ms,
