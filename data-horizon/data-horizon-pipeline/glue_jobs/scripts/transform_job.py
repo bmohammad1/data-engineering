@@ -239,23 +239,6 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -
 # ---------------------------------------------------------------------------
 
 
-def _accumulate_tag_counts(
-    dataframe: DataFrame,
-    count_key: str,
-    tag_stats: dict[str, dict],
-) -> None:
-    """Add per-tag row counts from dataframe into tag_stats[tag_id][count_key]."""
-    if "TagID" not in dataframe.columns:
-        return
-
-    rows_per_tag = dataframe.groupBy("TagID").count().collect()
-
-    for row in rows_per_tag:
-        tag_id = row.TagID
-        if tag_id:
-            tag_stats.setdefault(tag_id, {"transformed": 0})
-            tag_stats[tag_id][count_key] += row["count"]
-
 
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -307,17 +290,8 @@ def main() -> None:
     for table_name in TABLE_SCHEMAS:
         table_start_time = time.perf_counter()
         try:
-            extracted_dataframe = _extract_table(raw_dataframe, table_name).cache()
+            extracted_dataframe = _extract_table(raw_dataframe, table_name)
             transformed_dataframe = _apply_transformations(extracted_dataframe, table_name, run_id).cache()
-
-            # Capture the running total before accumulating this table's counts so
-            # the per-table record_count can be derived as a delta — no extra Spark action needed.
-            total_transformed_before = sum(v["transformed"] for v in tag_stats.values())
-            _accumulate_tag_counts(transformed_dataframe, "transformed", tag_stats)
-            record_count = sum(v["transformed"] for v in tag_stats.values()) - total_transformed_before
-            total_records_written += record_count
-
-            extracted_dataframe.unpersist()
 
             cleaned_s3_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
 
@@ -339,6 +313,18 @@ def main() -> None:
                 )
             else:
                 write_parquet_to_s3(transformed_dataframe, cleaned_s3_path)
+
+            # Accumulate per-tag counts from the cached DataFrame after the write
+            # so the count action reuses cached data rather than re-scanning S3.
+            if "TagID" in transformed_dataframe.columns:
+                for row in transformed_dataframe.groupBy("TagID").count().collect():
+                    tag_id = row.TagID
+                    if tag_id:
+                        tag_stats.setdefault(tag_id, {"transformed": 0})
+                        tag_stats[tag_id]["transformed"] += row["count"]
+
+            record_count = sum(v["transformed"] for v in tag_stats.values()) - total_records_written
+            total_records_written += record_count
 
             transformed_dataframe.unpersist()
 

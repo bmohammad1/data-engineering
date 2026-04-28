@@ -105,8 +105,24 @@ def main() -> None:
             valid_dataframe = valid_dataframe.cache()
             invalid_dataframe = invalid_dataframe.cache()
 
-            valid_record_count = valid_dataframe.count()
-            invalid_record_count = invalid_dataframe.count()
+            # Collect per-tag valid/invalid counts in a single pass over each
+            # cached DataFrame — avoids a second groupBy action later.
+            if "TagID" in valid_dataframe.columns:
+                for row in valid_dataframe.groupBy("TagID").count().collect():
+                    tag_id = row.TagID
+                    if tag_id:
+                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
+                        tag_counts[tag_id]["valid"] += row["count"]
+
+            if "TagID" in invalid_dataframe.columns:
+                for row in invalid_dataframe.groupBy("TagID").count().collect():
+                    tag_id = row.TagID
+                    if tag_id:
+                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
+                        tag_counts[tag_id]["invalid"] += row["count"]
+
+            valid_record_count = sum(v["valid"] for v in tag_counts.values()) - total_valid
+            invalid_record_count = sum(v["invalid"] for v in tag_counts.values()) - total_quarantined
 
             if valid_record_count > 0:
                 catalog_table_name = f"validated_{table_name}"
@@ -129,24 +145,10 @@ def main() -> None:
                     partition_cols=None,
                 )
 
-                if "TagID" in valid_dataframe.columns:
-                    for row in valid_dataframe.groupBy("TagID").count().collect():
-                        tag_id = row.TagID
-                        if tag_id:
-                            tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
-                            tag_counts[tag_id]["valid"] += row["count"]
-
             if invalid_record_count > 0:
                 quarantine_path = f"s3://{quarantine_bucket}/quarantine/{run_id}/{table_name}/"
                 invalid_dataframe_with_audit = add_audit_columns(invalid_dataframe, run_id, table_name)
                 write_json_to_s3(invalid_dataframe_with_audit, quarantine_path)
-
-                if "TagID" in invalid_dataframe.columns:
-                    for row in invalid_dataframe.groupBy("TagID").count().collect():
-                        tag_id = row.TagID
-                        if tag_id:
-                            tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
-                            tag_counts[tag_id]["invalid"] += row["count"]
 
             valid_dataframe.unpersist()
             invalid_dataframe.unpersist()

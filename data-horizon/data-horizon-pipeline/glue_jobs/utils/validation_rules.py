@@ -134,7 +134,14 @@ def _build_rules() -> dict[str, list[tuple[str, Column]]]:
     }
 
 
-_TABLE_RULES: dict[str, list[tuple[str, Column]]] = _build_rules()
+_TABLE_RULES: dict[str, list[tuple[str, Column]]] | None = None
+
+
+def _get_table_rules() -> dict[str, list[tuple[str, Column]]]:
+    global _TABLE_RULES
+    if _TABLE_RULES is None:
+        _TABLE_RULES = _build_rules()
+    return _TABLE_RULES
 
 
 def apply_validation(dataframe: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
@@ -143,7 +150,7 @@ def apply_validation(dataframe: DataFrame, table: str) -> tuple[DataFrame, DataF
     invalid_dataframe gets an extra _validation_errors column listing every
     rule name that failed, separated by '; '.
     """
-    table_rules = _TABLE_RULES.get(table, [])
+    table_rules = _get_table_rules().get(table, [])
 
     table_has_no_rules = len(table_rules) == 0
     if table_has_no_rules:
