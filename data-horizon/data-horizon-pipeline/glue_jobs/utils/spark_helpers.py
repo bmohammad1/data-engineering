@@ -31,7 +31,7 @@ def create_glue_context(job_name: str, args: dict) -> tuple[GlueContext, SparkSe
     # Tune shuffle partitions to match available executor cores (4 × 4 cores for
     # 2 × G.1X) and enable AQE so Spark automatically coalesces small partitions
     # at runtime — both are no-ops if already set via spark-submit.
-    spark.conf.set("spark.sql.shuffle.partitions", "16")
+    spark.conf.set("spark.sql.shuffle.partitions", "4")
     spark.conf.set("spark.sql.adaptive.enabled", "true")
     spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
 

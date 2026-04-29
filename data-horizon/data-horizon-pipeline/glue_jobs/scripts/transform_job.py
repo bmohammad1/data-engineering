@@ -21,7 +21,7 @@ import boto3
 from awsglue.utils import getResolvedOptions
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import StringType
 
 from utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
 from utils.spark_helpers import add_audit_columns, create_glue_context, write_parquet_to_s3
@@ -86,41 +86,21 @@ def _discover_tag_ids(raw_bucket: str, run_id: str) -> list[str]:
 
 _CORRUPT_RECORD_COL = "_corrupt_record"
 
-# Spark 2.3+ requires at least one real field alongside _corrupt_record.
-# "tag" is always present in every valid raw envelope so it anchors the schema.
-_TRIAGE_SCHEMA = StructType([
-    StructField("tag", StringType(), nullable=True),
-    StructField(_CORRUPT_RECORD_COL, StringType(), nullable=True),
-])
 
+def _extract_corrupt_tag_ids(raw_dataframe) -> set[str]:
+    """Return tag IDs whose JSON file failed to parse, using the already-cached raw DataFrame.
 
-def _detect_corrupt_tag_ids(spark, raw_s3_path: str) -> set[str]:
-    """Return the set of tag IDs whose JSON file cannot be parsed at all.
-
-    Reads every file with a minimal two-field schema so Spark populates
-    _corrupt_record for any unparseable file. The DataFrame is cached before
-    filtering because Spark forbids filtering on _corrupt_record alone without
-    materialising the plan first.
+    The raw DataFrame must have been read with PERMISSIVE mode and
+    columnNameOfCorruptRecord set to _CORRUPT_RECORD_COL so that unparseable
+    rows carry a non-null value in that column.
     """
-    triage_dataframe = (
-        spark.read
-        .schema(_TRIAGE_SCHEMA)
-        .option("mode", "PERMISSIVE")
-        .option("columnNameOfCorruptRecord", _CORRUPT_RECORD_COL)
-        .json(raw_s3_path)
-        .withColumn("_file_path", F.col("_metadata.file_path"))
-        .cache()
-    )
-
     corrupt_file_rows = (
-        triage_dataframe
+        raw_dataframe
         .filter(F.col(_CORRUPT_RECORD_COL).isNotNull())
         .select("_file_path")
         .distinct()
         .collect()
     )
-
-    triage_dataframe.unpersist()
 
     corrupt_tag_ids = set()
     for row in corrupt_file_rows:
@@ -198,39 +178,26 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -
     # Keep only the first occurrence of each primary key value.
     dataframe = dataframe.dropDuplicates([primary_key_column])
 
+    # Build all column expressions in one pass and emit a single select so Spark
+    # produces one plan node per table instead of one per string column.
+    column_expressions = []
     for field in target_schema.fields:
-        column_name = field.name
-        column_is_a_string = isinstance(field.dataType, StringType)
+        col_expr = F.col(field.name)
 
-        if not column_is_a_string:
-            continue
+        if isinstance(field.dataType, StringType):
+            if field.name in _ENUM_COLUMNS:
+                col_expr = F.upper(F.trim(col_expr))
+            else:
+                col_expr = F.trim(col_expr)
 
-        if column_name in _ENUM_COLUMNS:
-            # Enum columns must be uppercased for consistent comparisons downstream.
-            dataframe = dataframe.withColumn(
-                column_name,
-                F.upper(F.trim(F.col(column_name))),
-            )
-        else:
-            dataframe = dataframe.withColumn(
-                column_name,
-                F.trim(F.col(column_name)),
-            )
+            if field.nullable and field.name != primary_key_column:
+                col_expr = F.when(
+                    col_expr.isNull() | (col_expr == ""), F.lit("UNKNOWN")
+                ).otherwise(col_expr)
 
-        column_is_nullable = field.nullable
-        column_is_not_primary_key = column_name != primary_key_column
+        column_expressions.append(col_expr.alias(field.name))
 
-        if column_is_nullable and column_is_not_primary_key:
-            # Replace empty or null strings with "UNKNOWN" so downstream queries
-            # never encounter silent nulls in nullable string columns.
-            value_is_empty_or_null = (
-                F.col(column_name).isNull() | (F.col(column_name) == "")
-            )
-            dataframe = dataframe.withColumn(
-                column_name,
-                F.when(value_is_empty_or_null, F.lit("UNKNOWN")).otherwise(F.col(column_name)),
-            )
-
+    dataframe = dataframe.select(column_expressions)
     return add_audit_columns(dataframe, run_id, table_name)
 
 
@@ -238,6 +205,22 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -
 # Per-tag count accumulation
 # ---------------------------------------------------------------------------
 
+
+def _accumulate_tag_counts(dataframe: DataFrame, tag_stats: dict[str, dict]) -> int:
+    """Add per-tag transformed row counts from one table's DataFrame into tag_stats.
+
+    Only called for tables that have a TagID column. Updates tag_stats in-place
+    and returns the total row count so the caller avoids a second count() action.
+    """
+    total = 0
+    for row in dataframe.groupBy("TagID").count().collect():
+        tag_id = row.TagID
+        if tag_id:
+            entry = tag_stats.setdefault(tag_id, {"extracted": 0, "transformed": 0})
+            entry["extracted"] += row["count"]
+            entry["transformed"] += row["count"]
+            total += row["count"]
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -271,21 +254,32 @@ def main() -> None:
 
     all_tag_ids: set[str] = set(_discover_tag_ids(raw_bucket, run_id))
 
-    # Detect corrupt JSON envelopes once before the table loop.
-    corrupt_tag_ids: set[str] = _detect_corrupt_tag_ids(spark, raw_s3_path)
+    # tag_stats tracks extracted and transformed row counts per tag across all tables.
+    # Structure: { tag_id: { "extracted": int, "transformed": int } }
+    tag_stats: dict[str, dict] = {}
+    total_records_written = 0
+
+    # Single S3 read with PERMISSIVE mode — _corrupt_record captures unparseable rows
+    # and _file_path maps each row back to its source file for corrupt tag detection.
+    # Both columns are dropped before the table loop so they don't leak into extractions.
+    raw_dataframe = (
+        spark.read
+        .option("mode", "PERMISSIVE")
+        .option("columnNameOfCorruptRecord", _CORRUPT_RECORD_COL)
+        .json(raw_s3_path)
+        .withColumn("_file_path", F.col("_metadata.file_path"))
+        .cache()
+    )
+
+    corrupt_tag_ids: set[str] = _extract_corrupt_tag_ids(raw_dataframe)
     if corrupt_tag_ids:
         logger.warning(
             "Corrupt JSON envelopes detected — affected tags will be marked FAILED",
             extra={"run_id": run_id, "corrupt_tag_count": len(corrupt_tag_ids)},
         )
 
-    # tag_stats tracks extracted and transformed row counts per tag across all tables.
-    # Structure: { tag_id: { "extracted": int, "transformed": int } }
-    tag_stats: dict[str, dict] = {}
-    total_records_written = 0
-
-    # Read all raw files once and cache so the per-table loop does not re-scan S3.
-    raw_dataframe = spark.read.option("mode", "PERMISSIVE").json(raw_s3_path).cache()
+    # Drop the triage columns now that corrupt detection is done.
+    raw_dataframe = raw_dataframe.drop(_CORRUPT_RECORD_COL, "_file_path")
 
     for table_name in TABLE_SCHEMAS:
         table_start_time = time.perf_counter()
@@ -314,16 +308,11 @@ def main() -> None:
             else:
                 write_parquet_to_s3(transformed_dataframe, cleaned_s3_path)
 
-            # Accumulate per-tag counts from the cached DataFrame after the write
-            # so the count action reuses cached data rather than re-scanning S3.
             if "TagID" in transformed_dataframe.columns:
-                for row in transformed_dataframe.groupBy("TagID").count().collect():
-                    tag_id = row.TagID
-                    if tag_id:
-                        tag_stats.setdefault(tag_id, {"transformed": 0})
-                        tag_stats[tag_id]["transformed"] += row["count"]
-
-            record_count = sum(v["transformed"] for v in tag_stats.values()) - total_records_written
+                record_count = _accumulate_tag_counts(transformed_dataframe, tag_stats)
+            else:
+                # No TagID column — a single count is the only action needed.
+                record_count = transformed_dataframe.count()
             total_records_written += record_count
 
             transformed_dataframe.unpersist()
@@ -396,14 +385,14 @@ def main() -> None:
 
     success_tag_updates = []
     for tag_id in tags_with_output:
-        records_transformed = tag_stats.get(tag_id, {"transformed": 0})["transformed"]
+        stats = tag_stats.get(tag_id, {"extracted": 0, "transformed": 0})
         tags_success.add(tag_id)
         success_tag_updates.append({
             "tag_id": tag_id,
             "status": STATUS_SUCCESS,
-            "records_extracted": records_transformed,
+            "records_extracted": stats["extracted"],
             "records_dropped": 0,
-            "records_transformed": records_transformed,
+            "records_transformed": stats["transformed"],
         })
 
     bulk_update_tag_transform_status(dynamo_table_name, run_id, failed_tag_updates)
