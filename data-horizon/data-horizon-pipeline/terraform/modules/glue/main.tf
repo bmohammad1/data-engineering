@@ -14,6 +14,7 @@ resource "aws_glue_job" "transform" {
     "--ENVIRONMENT"                      = var.environment
     "--LOG_LEVEL"                        = "INFO"
     "--extra-py-files"                   = "s3://${var.scripts_bucket_name}/scripts/utils.zip"
+    "--conf"                             = "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.kryo.unsafe=true"
   }
 
   glue_version      = "4.0"
@@ -42,6 +43,7 @@ resource "aws_glue_job" "validation" {
     "--ENVIRONMENT"                      = var.environment
     "--LOG_LEVEL"                        = "INFO"
     "--extra-py-files"                   = "s3://${var.scripts_bucket_name}/scripts/utils.zip"
+    "--conf"                             = "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.kryo.unsafe=true"
   }
 
   glue_version      = "4.0"
