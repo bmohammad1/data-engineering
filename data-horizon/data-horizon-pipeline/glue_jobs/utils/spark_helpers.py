@@ -161,12 +161,12 @@ def write_parquet_to_catalog(
     sink.writeFrame(dynamic_frame)
 
 
-def add_audit_columns(dataframe: DataFrame, run_id: str, source_table: str) -> DataFrame:
+def add_audit_columns(dataframe: DataFrame, run_id: str, source_table: str, ingested_at: str) -> DataFrame:
     """Append pipeline audit columns to a DataFrame."""
     existing_columns = [F.col(column_name) for column_name in dataframe.columns]
     audit_columns = [
         F.lit(run_id).alias("_run_id"),
         F.lit(source_table).alias("_source_table"),
-        F.current_timestamp().alias("_ingested_at"),
+        F.lit(ingested_at).alias("_ingested_at"),
     ]
     return dataframe.select(*existing_columns, *audit_columns)

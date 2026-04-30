@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 import boto3
 from awsglue.utils import getResolvedOptions
@@ -98,7 +99,6 @@ def _extract_corrupt_tag_ids(raw_dataframe) -> set[str]:
         raw_dataframe
         .filter(F.col(_CORRUPT_RECORD_COL).isNotNull())
         .select("_file_path")
-        .distinct()
         .collect()
     )
 
@@ -163,7 +163,7 @@ def _extract_table(raw_dataframe: DataFrame, table_name: str) -> DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -> DataFrame:
+def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str, ingested_at: str) -> DataFrame:
     """Apply all standard transformations to a domain table DataFrame."""
     target_schema = TABLE_SCHEMAS[table_name]
     primary_key_column = PRIMARY_KEYS[table_name]
@@ -179,7 +179,6 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -
     dataframe = dataframe.dropDuplicates([primary_key_column])
 
     # Build all column expressions in one pass and emit a single select so Spark
-    # produces one plan node per table instead of one per string column.
     column_expressions = []
     for field in target_schema.fields:
         col_expr = F.col(field.name)
@@ -198,7 +197,7 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -
         column_expressions.append(col_expr.alias(field.name))
 
     dataframe = dataframe.select(column_expressions)
-    return add_audit_columns(dataframe, run_id, table_name)
+    return add_audit_columns(dataframe, run_id, table_name, ingested_at)
 
 
 # ---------------------------------------------------------------------------
@@ -206,21 +205,17 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str) -
 # ---------------------------------------------------------------------------
 
 
-def _accumulate_tag_counts(dataframe: DataFrame, tag_stats: dict[str, dict]) -> int:
-    """Add per-tag transformed row counts from one table's DataFrame into tag_stats.
-
-    Only called for tables that have a TagID column. Updates tag_stats in-place
-    and returns the total row count so the caller avoids a second count() action.
-    """
-    total = 0
-    for row in dataframe.groupBy("TagID").count().collect():
-        tag_id = row.TagID
-        if tag_id:
-            entry = tag_stats.setdefault(tag_id, {"extracted": 0, "transformed": 0})
-            entry["extracted"] += row["count"]
-            entry["transformed"] += row["count"]
-            total += row["count"]
-    return total
+# TODO: replace groupBy shuffle with accumulator-based counting; re-enable when implemented
+# def _accumulate_tag_counts(dataframe: DataFrame, tag_stats: dict[str, dict]) -> int:
+#     total = 0
+#     for row in dataframe.groupBy("TagID").count().collect():
+#         tag_id = row.TagID
+#         if tag_id:
+#             entry = tag_stats.setdefault(tag_id, {"extracted": 0, "transformed": 0})
+#             entry["extracted"] += row["count"]
+#             entry["transformed"] += row["count"]
+#             total += row["count"]
+#     return total
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +235,7 @@ def main() -> None:
 
     run_id_ctx.set(run_id)
     job_start_time = time.perf_counter()
+    ingested_at = datetime.now(timezone.utc).isoformat()
 
     glue_ctx, spark, job = create_glue_context(args["JOB_NAME"], args)
 
@@ -254,15 +250,14 @@ def main() -> None:
 
     all_tag_ids: set[str] = set(_discover_tag_ids(raw_bucket, run_id))
 
-    # tag_stats tracks extracted and transformed row counts per tag across all tables.
-    # Structure: { tag_id: { "extracted": int, "transformed": int } }
+    # tag_stats: reserved for future per-tag count accumulation (currently disabled).
     tag_stats: dict[str, dict] = {}
     total_records_written = 0
 
     # Single S3 read with PERMISSIVE mode — _corrupt_record captures unparseable rows
     # and _file_path maps each row back to its source file for corrupt tag detection.
     # Both columns are dropped before the table loop so they don't leak into extractions.
-    raw_dataframe = (
+    triage_dataframe = (
         spark.read
         .option("mode", "PERMISSIVE")
         .option("columnNameOfCorruptRecord", _CORRUPT_RECORD_COL)
@@ -271,21 +266,24 @@ def main() -> None:
         .cache()
     )
 
-    corrupt_tag_ids: set[str] = _extract_corrupt_tag_ids(raw_dataframe)
+    corrupt_tag_ids: set[str] = _extract_corrupt_tag_ids(triage_dataframe)
     if corrupt_tag_ids:
         logger.warning(
             "Corrupt JSON envelopes detected — affected tags will be marked FAILED",
             extra={"run_id": run_id, "corrupt_tag_count": len(corrupt_tag_ids)},
         )
 
-    # Drop the triage columns now that corrupt detection is done.
-    raw_dataframe = raw_dataframe.drop(_CORRUPT_RECORD_COL, "_file_path")
+    # Drop the triage columns and cache the result — this is the DataFrame reused
+    # across all 13 table extractions. Caching here (after drop) ensures every
+    # table reads from the same cached plan node rather than recomputing from S3.
+    raw_dataframe = triage_dataframe.drop(_CORRUPT_RECORD_COL, "_file_path").cache()
+    triage_dataframe.unpersist()
 
     for table_name in TABLE_SCHEMAS:
         table_start_time = time.perf_counter()
         try:
             extracted_dataframe = _extract_table(raw_dataframe, table_name)
-            transformed_dataframe = _apply_transformations(extracted_dataframe, table_name, run_id).cache()
+            transformed_dataframe = _apply_transformations(extracted_dataframe, table_name, run_id, ingested_at).cache()
 
             cleaned_s3_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
 
@@ -308,11 +306,11 @@ def main() -> None:
             else:
                 write_parquet_to_s3(transformed_dataframe, cleaned_s3_path)
 
-            if "TagID" in transformed_dataframe.columns:
-                record_count = _accumulate_tag_counts(transformed_dataframe, tag_stats)
-            else:
-                # No TagID column — a single count is the only action needed.
-                record_count = transformed_dataframe.count()
+            # TODO: replace groupBy shuffle with accumulator-based counting
+            # if "TagID" in transformed_dataframe.columns:
+            #     record_count = _accumulate_tag_counts(transformed_dataframe, tag_stats)
+            # else:
+            record_count = transformed_dataframe.count()
             total_records_written += record_count
 
             transformed_dataframe.unpersist()
