@@ -40,24 +40,6 @@ logger = logging.getLogger(__name__)
 # Columns whose string values must be uppercased — they represent fixed enum-like states.
 _ENUM_COLUMNS = {"QualityFlag", "Status", "PaymentStatus"}
 
-# Maps each fact table to the source column used to derive the partition date.
-# Tables absent from this map are written flat (no partitioning) because they
-# are dimension or transactional tables with low row counts where partitioning
-# would create too many tiny files relative to the data volume.
-_PARTITION_SOURCE_COLUMN: dict[str, str] = {
-    "measurements":          "Timestamp",
-    "alarms":                "Timestamp",
-    "events":                "Timestamp",
-    "inventory":             "LastUpdated",
-    "maintenance":           "MaintenanceDate",
-    "regulatory_compliance": "InspectionDate",
-    "financial_forecasts":   "ForecastDate",
-}
-
-# Name of the derived date column added before writing — kept consistent so
-# Athena partition projection and downstream Glue jobs can rely on a single name.
-_PARTITION_DATE_COLUMN = "partition_date"
-
 
 # ---------------------------------------------------------------------------
 # Raw data discovery
@@ -201,24 +183,6 @@ def _apply_transformations(dataframe: DataFrame, table_name: str, run_id: str, i
 
 
 # ---------------------------------------------------------------------------
-# Per-tag count accumulation
-# ---------------------------------------------------------------------------
-
-
-# TODO: replace groupBy shuffle with accumulator-based counting; re-enable when implemented
-# def _accumulate_tag_counts(dataframe: DataFrame, tag_stats: dict[str, dict]) -> int:
-#     total = 0
-#     for row in dataframe.groupBy("TagID").count().collect():
-#         tag_id = row.TagID
-#         if tag_id:
-#             entry = tag_stats.setdefault(tag_id, {"extracted": 0, "transformed": 0})
-#             entry["extracted"] += row["count"]
-#             entry["transformed"] += row["count"]
-#             total += row["count"]
-#     return total
-
-
-# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -250,7 +214,6 @@ def main() -> None:
 
     all_tag_ids: set[str] = set(_discover_tag_ids(raw_bucket, run_id))
 
-    # tag_stats: reserved for future per-tag count accumulation (currently disabled).
     tag_stats: dict[str, dict] = {}
     total_records_written = 0
 
@@ -287,30 +250,19 @@ def main() -> None:
 
             cleaned_s3_path = f"s3://{cleaned_bucket}/cleaned/{run_id}/{table_name}/"
 
-            source_column = _PARTITION_SOURCE_COLUMN.get(table_name)
-            if source_column is not None:
-                # Spark's partitionBy automatically excludes the partition column
-                # from the row data inside each Parquet file — it is stored only
-                # in the directory name (partition_date=2024-01-15/). The column
-                # must remain in the DataFrame so partitionBy can read its value,
-                # but it will not appear as an extra column when the file is read back.
-                dataframe_with_partition_date = transformed_dataframe.withColumn(
-                    _PARTITION_DATE_COLUMN,
-                    F.to_date(F.col(source_column)),
-                )
-                write_parquet_to_s3(
-                    dataframe_with_partition_date,
-                    cleaned_s3_path,
-                    partition_cols=[_PARTITION_DATE_COLUMN],
-                )
-            else:
-                write_parquet_to_s3(transformed_dataframe, cleaned_s3_path)
+            write_parquet_to_s3(transformed_dataframe, cleaned_s3_path)
 
-            # TODO: replace groupBy shuffle with accumulator-based counting
-            # if "TagID" in transformed_dataframe.columns:
-            #     record_count = _accumulate_tag_counts(transformed_dataframe, tag_stats)
-            # else:
-            record_count = transformed_dataframe.count()
+            if "TagID" in transformed_dataframe.columns:
+                # groupBy reads from the in-memory cache materialized by the write
+                # above — no S3 re-read. One shuffle per table but over cached data.
+                for row in transformed_dataframe.groupBy("TagID").count().collect():
+                    if row.TagID:
+                        entry = tag_stats.setdefault(row.TagID, {"extracted": 0, "transformed": 0})
+                        entry["extracted"] += row["count"]
+                        entry["transformed"] += row["count"]
+                record_count = sum(s["transformed"] for s in tag_stats.values())
+            else:
+                record_count = transformed_dataframe.count()
             total_records_written += record_count
 
             transformed_dataframe.unpersist()

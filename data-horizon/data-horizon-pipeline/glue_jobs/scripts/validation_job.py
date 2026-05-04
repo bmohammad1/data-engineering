@@ -23,10 +23,10 @@ import sys
 import time
 
 from awsglue.utils import getResolvedOptions
+from pyspark.sql import functions as F
 
 from utils.schema_definitions import REDSHIFT_COLUMN_MAP, TABLE_SCHEMAS
 from utils.spark_helpers import (
-    add_audit_columns,
     create_glue_context,
     read_parquet_from_s3,
     write_json_to_s3,
@@ -105,50 +105,55 @@ def main() -> None:
             valid_dataframe = valid_dataframe.cache()
             invalid_dataframe = invalid_dataframe.cache()
 
-            # Collect per-tag valid/invalid counts in a single pass over each
-            # cached DataFrame — avoids a second groupBy action later.
-            if "TagID" in valid_dataframe.columns:
-                for row in valid_dataframe.groupBy("TagID").count().collect():
+            table_has_tag_id = "TagID" in valid_dataframe.columns
+
+            if table_has_tag_id:
+                # Single groupBy over a union of valid + invalid rows — one shuffle
+                # instead of two separate groupBy actions per table.
+                labeled = (
+                    valid_dataframe.select("TagID", F.lit("valid").alias("_outcome"))
+                    .union(invalid_dataframe.select("TagID", F.lit("invalid").alias("_outcome")))
+                )
+                for row in labeled.groupBy("TagID", "_outcome").count().collect():
                     tag_id = row.TagID
                     if tag_id:
                         tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
-                        tag_counts[tag_id]["valid"] += row["count"]
+                        tag_counts[tag_id][row["_outcome"]] += row["count"]
 
-            if "TagID" in invalid_dataframe.columns:
-                for row in invalid_dataframe.groupBy("TagID").count().collect():
-                    tag_id = row.TagID
-                    if tag_id:
-                        tag_counts.setdefault(tag_id, {"valid": 0, "invalid": 0})
-                        tag_counts[tag_id]["invalid"] += row["count"]
-
-            valid_record_count = sum(v["valid"] for v in tag_counts.values()) - total_valid
-            invalid_record_count = sum(v["invalid"] for v in tag_counts.values()) - total_quarantined
+                valid_record_count = sum(v["valid"] for v in tag_counts.values()) - total_valid
+                invalid_record_count = sum(v["invalid"] for v in tag_counts.values()) - total_quarantined
+            else:
+                # Non-TagID tables (tag, equipment, location, customer) — no tag
+                # tracking needed, count directly to avoid silent under-counting.
+                valid_record_count = valid_dataframe.count()
+                invalid_record_count = invalid_dataframe.count()
 
             if valid_record_count > 0:
                 catalog_table_name = f"validated_{table_name}"
                 validated_path = f"s3://{validated_bucket}/validated/{run_id}/{table_name}/"
 
-                # Rename PascalCase Spark columns to snake_case so they match the
-                # Redshift staging table column names. COPY FORMAT AS PARQUET maps
-                # by name — a mismatch produces 0 inserted rows without error.
+                # Rename PascalCase columns to snake_case in one select so Redshift
+                # COPY FORMAT AS PARQUET matches by name without silent zero-row loads.
                 rename_map = REDSHIFT_COLUMN_MAP[table_name]
-                renamed_dataframe = valid_dataframe
-                for pascal_col, snake_col in rename_map.items():
-                    renamed_dataframe = renamed_dataframe.withColumnRenamed(pascal_col, snake_col)
+                rename_exprs = [
+                    F.col(c).alias(rename_map.get(c, c)) for c in valid_dataframe.columns
+                ]
+                renamed_dataframe = valid_dataframe.select(rename_exprs).coalesce(1)
 
                 write_parquet_to_catalog(
-                    glue_ctx,
                     renamed_dataframe,
                     glue_database,
                     catalog_table_name,
                     validated_path,
-                    partition_cols=None,
                 )
 
             if invalid_record_count > 0:
                 quarantine_path = f"s3://{quarantine_bucket}/quarantine/{run_id}/{table_name}/"
-                invalid_dataframe_with_audit = add_audit_columns(invalid_dataframe, run_id, table_name)
-                write_json_to_s3(invalid_dataframe_with_audit, quarantine_path)
+                # Invalid records already carry _run_id, _source_table, _ingested_at
+                # from the transform job — writing directly preserves the original audit trail.
+                # coalesce(1): quarantine files are read by humans/monitoring tools — one
+                # file per table is easier to inspect than scattered part files.
+                write_json_to_s3(invalid_dataframe.coalesce(1), quarantine_path)
 
             valid_dataframe.unpersist()
             invalid_dataframe.unpersist()

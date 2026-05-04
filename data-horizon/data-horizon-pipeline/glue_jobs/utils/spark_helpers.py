@@ -2,8 +2,8 @@
 
 import logging
 
+import boto3
 from awsglue.context import GlueContext
-from awsglue.dynamicframe import DynamicFrame
 from awsglue.job import Job
 from pyspark.context import SparkContext
 from pyspark.sql import DataFrame, SparkSession
@@ -131,8 +131,72 @@ def write_parquet_to_s3(
     writer.parquet(s3_path)
 
 
+def _register_glue_catalog_table(
+    database: str,
+    table_name: str,
+    s3_path: str,
+    dataframe: DataFrame,
+) -> None:
+    """Create or update a Glue Data Catalog table pointing at the given S3 prefix.
+
+    Derives column definitions from the DataFrame schema, mapping PySpark types
+    to the Hive type strings Glue expects. Called after the Parquet write so
+    Athena can query the table immediately without MSCK REPAIR TABLE.
+    """
+    _PYSPARK_TO_HIVE: dict[str, str] = {
+        "StringType":    "string",
+        "IntegerType":   "int",
+        "LongType":      "bigint",
+        "DoubleType":    "double",
+        "FloatType":     "float",
+        "BooleanType":   "boolean",
+        "TimestampType": "timestamp",
+        "DateType":      "date",
+    }
+
+    columns = [
+        {
+            "Name": field.name,
+            "Type": _PYSPARK_TO_HIVE.get(type(field.dataType).__name__, "string"),
+        }
+        for field in dataframe.schema.fields
+    ]
+
+    storage_descriptor = {
+        "Location": s3_path,
+        "InputFormat":  "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+        "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+        "SerdeInfo": {
+            "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            "Parameters": {"serialization.format": "1"},
+        },
+        "Columns": columns,
+    }
+
+    glue_client = boto3.client("glue")
+    try:
+        glue_client.update_table(
+            DatabaseName=database,
+            TableInput={
+                "Name": table_name,
+                "StorageDescriptor": storage_descriptor,
+                "TableType": "EXTERNAL_TABLE",
+                "Parameters": {"classification": "parquet"},
+            },
+        )
+    except glue_client.exceptions.EntityNotFoundException:
+        glue_client.create_table(
+            DatabaseName=database,
+            TableInput={
+                "Name": table_name,
+                "StorageDescriptor": storage_descriptor,
+                "TableType": "EXTERNAL_TABLE",
+                "Parameters": {"classification": "parquet"},
+            },
+        )
+
+
 def write_parquet_to_catalog(
-    glue_ctx: GlueContext,
     dataframe: DataFrame,
     database: str,
     table_name: str,
@@ -141,24 +205,12 @@ def write_parquet_to_catalog(
 ) -> None:
     """Write a DataFrame as snappy Parquet and register/update the Glue Data Catalog.
 
-    Using enableUpdateCatalog=True means Athena can query the table
-    immediately after the job finishes — no MSCK REPAIR TABLE needed.
-    When partition_cols is provided, Glue creates Hive-style subdirectories
-    (e.g., partition_date=2024-01-15/) and registers them in the Data Catalog,
-    enabling Athena partition pruning on those columns.
+    Uses a direct Spark write (not DynamicFrame) so the caller's partition count
+    is fully respected — DynamicFrame.fromDF ignores coalesce/repartition hints.
+    Catalog registration is done via boto3 after the write completes.
     """
-    dynamic_frame = DynamicFrame.fromDF(dataframe, glue_ctx, table_name)
-
-    sink = glue_ctx.getSink(
-        connection_type="s3",
-        path=s3_path,
-        enableUpdateCatalog=True,
-        updateBehavior="UPDATE_IN_DATABASE",
-        partitionKeys=partition_cols or [],
-    )
-    sink.setFormat("glueparquet", formatOptions={"compression": "snappy"})
-    sink.setCatalogInfo(catalogDatabase=database, catalogTableName=table_name)
-    sink.writeFrame(dynamic_frame)
+    write_parquet_to_s3(dataframe, s3_path, partition_cols)
+    _register_glue_catalog_table(database, table_name, s3_path, dataframe)
 
 
 def add_audit_columns(dataframe: DataFrame, run_id: str, source_table: str, ingested_at: str) -> DataFrame:
