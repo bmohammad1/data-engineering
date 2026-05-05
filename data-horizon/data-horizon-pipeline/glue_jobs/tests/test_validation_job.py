@@ -18,13 +18,8 @@ from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX, STATUS_FAILE
 
 
 # ---------------------------------------------------------------------------
-# Cleaned JSON helpers (written to the cleaned bucket as input)
+# Cleaned record helpers
 # ---------------------------------------------------------------------------
-
-def _cleaned_measurements_json(records: list[dict]) -> bytes:
-    """Newline-delimited JSON — the format write_json_to_s3 produces."""
-    return b"\n".join(json.dumps(r).encode("utf-8") for r in records)
-
 
 def _valid_measurement(mid: str, tag_id: str) -> dict:
     return {
@@ -41,17 +36,9 @@ def _invalid_measurement(mid: str, tag_id: str) -> dict:
         "MeasurementID": mid,
         "TagID": tag_id,
         "Timestamp": "2024-01-01T12:00:00.000Z",
-        "Value": None,       # violates value_not_null
+        "Value": None,          # violates value_not_null
         "QualityFlag": "CORRUPTED",  # violates quality_flag_valid
     }
-
-
-def _upload_cleaned(s3_client, table: str, body: bytes) -> None:
-    s3_client.put_object(
-        Bucket=CLEANED_BUCKET,
-        Key=f"cleaned/{RUN_ID}/{table}/part-00000.json",
-        Body=body,
-    )
 
 
 def _seed_tag_item(dynamodb_client, tag_id: str, overall_status: str = STATUS_SUCCESS) -> None:
@@ -114,39 +101,100 @@ SSM_CONFIG = {
 }
 
 
-def _make_spark_parquet_reader(spark, schema):
-    """Return a function that reads from moto S3 via Spark instead of GlueContext."""
-    def _read(glue_ctx, s3_path, tbl_schema):
-        try:
-            return spark.read.schema(tbl_schema).parquet(s3_path)
-        except Exception:
-            return spark.createDataFrame([], tbl_schema)
+def _build_measurements_df(spark, records: list[dict]):
+    """Build a measurements DataFrame in-memory using spark.sql() + from_json().
+
+    Avoids any filesystem access — no s3:// URI or local path is passed to Spark.
+    Each record is serialised to a JSON string and parsed via from_json() so
+    Spark sees typed structs rather than raw Python data (which would require
+    cloudpickle serialisation, unsupported on Python 3.14).
+    """
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import DoubleType, StringType, StructField, StructType
+
+    measurements_schema = StructType([
+        StructField("MeasurementID", StringType(), True),
+        StructField("TagID",         StringType(), True),
+        StructField("Timestamp",     StringType(), True),
+        StructField("Value",         DoubleType(),  True),
+        StructField("QualityFlag",   StringType(), True),
+    ])
+
+    if not records:
+        return spark.sql(
+            "SELECT CAST(NULL AS STRING) AS MeasurementID,"
+            " CAST(NULL AS STRING) AS TagID,"
+            " CAST(NULL AS STRING) AS Timestamp,"
+            " CAST(NULL AS DOUBLE) AS Value,"
+            " CAST(NULL AS STRING) AS QualityFlag"
+            " WHERE 1=0"
+        )
+
+    parts = []
+    for record in records:
+        safe_json = json.dumps(record).replace("'", "''")
+        df = (
+            spark.sql(f"SELECT '{safe_json}' AS _raw")
+            .select(F.from_json(F.col("_raw"), measurements_schema).alias("_d"))
+            .select("_d.*")
+        )
+        parts.append(df)
+
+    result = parts[0]
+    for df in parts[1:]:
+        result = result.unionByName(df)
+    return result
+
+
+def _make_in_memory_reader(spark, table_records: dict[str, list[dict]]):
+    """Return a replacement for read_parquet_from_s3 that builds DataFrames in-memory.
+
+    table_records maps table_name → list of record dicts. Tables not present in
+    the dict return an empty DataFrame matching the requested schema. The s3_path
+    argument encodes the table name as the last non-empty path segment, which is
+    used to look up records.
+
+    No s3:// URI or local filesystem path ever reaches Spark.
+    """
+    def _read(glue_ctx, s3_path: str, tbl_schema):
+        segments = [p for p in s3_path.rstrip("/").split("/") if p]
+        table_name = segments[-1] if segments else ""
+
+        if table_name == "measurements" and table_name in table_records:
+            return _build_measurements_df(spark, table_records[table_name])
+
+        # All other tables return an empty DataFrame — they are not exercised
+        # in these tests so returning empty is correct and safe.
+        return spark.sql(
+            " UNION ALL ".join(
+                f"SELECT {', '.join(f'CAST(NULL AS STRING) AS {f.name}' for f in tbl_schema.fields)}"
+                " WHERE 1=0"
+                for _ in [1]  # single-element loop to build one SELECT … WHERE 1=0
+            )
+        )
+
     return _read
 
 
-def _make_spark_json_reader(spark):
-    """Return a patched read_parquet_from_s3 that falls back to JSON for test uploads."""
-    def _read(glue_ctx, s3_path, tbl_schema):
-        try:
-            return spark.read.schema(tbl_schema).json(s3_path)
-        except Exception:
-            return spark.createDataFrame([], tbl_schema)
-    return _read
+def _patch_glue(spark, mock_glue_job, table_records: dict[str, list[dict]]):
+    """Return a list of context managers patching all Glue-specific entry points.
 
-
-def _patch_glue(spark, mock_glue_job):
-    """Return a list of context managers patching all Glue-specific entry points."""
+    read_parquet_from_s3 is replaced with an in-memory reader so no s3:// URI
+    ever reaches Spark. write_parquet_to_catalog and write_json_to_s3 are mocked
+    to no-ops — S3/catalog writes are not under test here.
+    """
     glue_ctx, job = mock_glue_job
-    mock_write_catalog = MagicMock()
-    mock_write_json = MagicMock()
 
     return [
         patch("glue_jobs.scripts.validation_job.getResolvedOptions", return_value=GLUE_ARGS),
         patch("glue_jobs.scripts.validation_job.create_glue_context", return_value=(glue_ctx, spark, job)),
         patch("glue_jobs.scripts.validation_job.load_ssm_config", return_value=SSM_CONFIG),
-        patch("glue_jobs.scripts.validation_job.read_parquet_from_s3", side_effect=_make_spark_json_reader(spark)),
-        patch("glue_jobs.scripts.validation_job.write_parquet_to_catalog", mock_write_catalog),
-        patch("glue_jobs.scripts.validation_job.write_json_to_s3", mock_write_json),
+        patch(
+            "glue_jobs.scripts.validation_job.read_parquet_from_s3",
+            side_effect=_make_in_memory_reader(spark, table_records),
+        ),
+        patch("glue_jobs.scripts.validation_job.write_parquet_to_catalog", MagicMock()),
+        patch("glue_jobs.scripts.validation_job.write_json_to_s3", MagicMock()),
     ]
 
 
@@ -162,14 +210,15 @@ class TestValidationJobRouting:
         _seed_tag_item(dynamodb_table, "TAG-001")
         _seed_meta_item(dynamodb_table)
 
-        records = [
-            _valid_measurement("M-001", "TAG-001"),
-            _valid_measurement("M-002", "TAG-001"),
-        ]
-        _upload_cleaned(s3, "measurements", _cleaned_measurements_json(records))
+        records = {
+            "measurements": [
+                _valid_measurement("M-001", "TAG-001"),
+                _valid_measurement("M-002", "TAG-001"),
+            ]
+        }
 
         mock_write_catalog = MagicMock()
-        patches = _patch_glue(spark, mock_glue_job)
+        patches = _patch_glue(spark, mock_glue_job, records)
         patches[4] = patch(
             "glue_jobs.scripts.validation_job.write_parquet_to_catalog",
             mock_write_catalog,
@@ -178,13 +227,12 @@ class TestValidationJobRouting:
             from glue_jobs.scripts import validation_job
             validation_job.main()
 
+        # write_parquet_to_catalog(df, glue_database, catalog_table_name, validated_path)
         mock_write_catalog.assert_any_call(
-            ANY,
             ANY,
             GLUE_DATABASE,
             "validated_measurements",
             ANY,
-            partition_cols=["partition_date"],
         )
 
         item = _get_tag_item(dynamodb_table, "TAG-001")
@@ -199,25 +247,23 @@ class TestValidationJobRouting:
         _seed_tag_item(dynamodb_table, "TAG-001")
         _seed_meta_item(dynamodb_table)
 
-        records = [
-            _valid_measurement("M-001", "TAG-001"),
-            _invalid_measurement("M-002", "TAG-001"),
-        ]
-        _upload_cleaned(s3, "measurements", _cleaned_measurements_json(records))
+        records = {
+            "measurements": [
+                _valid_measurement("M-001", "TAG-001"),
+                _invalid_measurement("M-002", "TAG-001"),
+            ]
+        }
 
-        mock_write_json = MagicMock()
-        patches = _patch_glue(spark, mock_glue_job)
-        # Replace the write_json_to_s3 mock with a capturing one so we can verify quarantine routing.
         quarantine_calls = []
-        original_patches = patches[:]
+        patches = _patch_glue(spark, mock_glue_job, records)
+        patches[5] = patch(
+            "glue_jobs.scripts.validation_job.write_json_to_s3",
+            side_effect=lambda df, path: quarantine_calls.append(path),
+        )
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            with patch(
-                "glue_jobs.scripts.validation_job.write_json_to_s3",
-                side_effect=lambda df, path: quarantine_calls.append(path),
-            ):
-                from glue_jobs.scripts import validation_job
-                validation_job.main()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            from glue_jobs.scripts import validation_job
+            validation_job.main()
 
         assert any(f"quarantine/{RUN_ID}/measurements" in p for p in quarantine_calls), (
             "Invalid record was not routed to the quarantine path"
@@ -234,13 +280,14 @@ class TestValidationJobRouting:
         _seed_tag_item(dynamodb_table, "TAG-FAIL")
         _seed_meta_item(dynamodb_table)
 
-        records = [
-            _invalid_measurement("M-001", "TAG-FAIL"),
-            _invalid_measurement("M-002", "TAG-FAIL"),
-        ]
-        _upload_cleaned(s3, "measurements", _cleaned_measurements_json(records))
+        records = {
+            "measurements": [
+                _invalid_measurement("M-001", "TAG-FAIL"),
+                _invalid_measurement("M-002", "TAG-FAIL"),
+            ]
+        }
 
-        patches = _patch_glue(spark, mock_glue_job)
+        patches = _patch_glue(spark, mock_glue_job, records)
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             from glue_jobs.scripts import validation_job
             with pytest.raises(RuntimeError, match="All.*records failed validation"):

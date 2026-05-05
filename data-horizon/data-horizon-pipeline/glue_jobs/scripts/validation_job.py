@@ -25,19 +25,34 @@ import time
 from awsglue.utils import getResolvedOptions
 from pyspark.sql import functions as F
 
-from utils.schema_definitions import REDSHIFT_COLUMN_MAP, TABLE_SCHEMAS
-from utils.spark_helpers import (
-    create_glue_context,
-    read_parquet_from_s3,
-    write_json_to_s3,
-    write_parquet_to_catalog,
-)
-from utils.validation_rules import apply_validation
-from utils.dynamodb_updater import (
-    bulk_update_tag_validate_status,
-    fetch_transform_succeeded_tags,
-    update_run_validate_status,
-)
+try:
+    from glue_jobs.utils.schema_definitions import REDSHIFT_COLUMN_MAP, TABLE_SCHEMAS
+    from glue_jobs.utils.spark_helpers import (
+        create_glue_context,
+        read_parquet_from_s3,
+        write_json_to_s3,
+        write_parquet_to_catalog,
+    )
+    from glue_jobs.utils.validation_rules import apply_validation
+    from glue_jobs.utils.dynamodb_updater import (
+        bulk_update_tag_validate_status,
+        fetch_transform_succeeded_tags,
+        update_run_validate_status,
+    )
+except ImportError:
+    from utils.schema_definitions import REDSHIFT_COLUMN_MAP, TABLE_SCHEMAS
+    from utils.spark_helpers import (
+        create_glue_context,
+        read_parquet_from_s3,
+        write_json_to_s3,
+        write_parquet_to_catalog,
+    )
+    from utils.validation_rules import apply_validation
+    from utils.dynamodb_updater import (
+        bulk_update_tag_validate_status,
+        fetch_transform_succeeded_tags,
+        update_run_validate_status,
+    )
 
 from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS, load_ssm_config
 from shared.logger import configure_logging, run_id_ctx

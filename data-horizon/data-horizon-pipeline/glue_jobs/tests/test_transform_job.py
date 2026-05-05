@@ -1,7 +1,7 @@
 """Tests for transform_job.py — fault isolation and per-tag record counts."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
@@ -146,11 +146,9 @@ def _get_tag_item(dynamodb_client, tag_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Glue / sys.argv mocking helpers
+# Glue / S3 mocking helpers
 # ---------------------------------------------------------------------------
 
-# The job reads bucket and table names from SSM via load_ssm_config(environment).
-# GLUE_ARGS only needs the keys that getResolvedOptions actually resolves.
 GLUE_ARGS = {
     "JOB_NAME": "test-transform-job",
     "run_id": RUN_ID,
@@ -163,14 +161,150 @@ SSM_CONFIG = {
     "pipeline-state-table": TABLE_NAME,
 }
 
+# Full TagResponse schema for from_json — mirrors the raw API structure.
+# All array tables use a minimal struct so unexploded columns don't need full
+# field definitions (only measurements is exercised in these tests).
+def _tag_response_schema():
+    from pyspark.sql.types import (
+        ArrayType, DoubleType, StringType, StructField, StructType,
+    )
+    _stub_array = ArrayType(StructType([StructField("_stub", StringType(), True)]))
+    return StructType([
+        StructField("tag", StructType([
+            StructField("TagID",         StringType(), True),
+            StructField("TagName",       StringType(), True),
+            StructField("Description",   StringType(), True),
+            StructField("UnitOfMeasure", StringType(), True),
+            StructField("EquipmentID",   StringType(), True),
+            StructField("LocationID",    StringType(), True),
+        ]), True),
+        StructField("equipment", StructType([
+            StructField("EquipmentID",   StringType(), True),
+            StructField("EquipmentName", StringType(), True),
+            StructField("EquipmentType", StringType(), True),
+            StructField("Manufacturer",  StringType(), True),
+            StructField("InstallDate",   StringType(), True),
+        ]), True),
+        StructField("location", StructType([
+            StructField("LocationID",     StringType(), True),
+            StructField("SiteName",       StringType(), True),
+            StructField("Area",           StringType(), True),
+            StructField("GPSCoordinates", StringType(), True),
+        ]), True),
+        StructField("customer", StructType([
+            StructField("CustomerID",   StringType(), True),
+            StructField("CustomerName", StringType(), True),
+            StructField("Industry",     StringType(), True),
+            StructField("ContactInfo",  StringType(), True),
+            StructField("Region",       StringType(), True),
+        ]), True),
+        StructField("measurements", ArrayType(StructType([
+            StructField("MeasurementID", StringType(), True),
+            StructField("TagID",         StringType(), True),
+            StructField("Timestamp",     StringType(), True),
+            StructField("Value",         DoubleType(), True),
+            StructField("QualityFlag",   StringType(), True),
+        ])), True),
+        StructField("alarms",                _stub_array, True),
+        StructField("maintenance",           _stub_array, True),
+        StructField("events",                _stub_array, True),
+        StructField("contracts",             _stub_array, True),
+        StructField("billing",               _stub_array, True),
+        StructField("inventory",             _stub_array, True),
+        StructField("regulatory_compliance", _stub_array, True),
+        StructField("financial_forecasts",   _stub_array, True),
+    ])
 
-def _patch_glue(spark, mock_glue_job):
-    """Return a list of context managers that patch all Glue-specific entry points."""
+
+def _build_raw_df(spark, tag_payloads: dict[str, bytes]):
+    """Build a triage DataFrame from tag payloads without touching the filesystem.
+
+    Uses spark.sql() + from_json() so no s3:// URI or local path ever reaches
+    Spark's Hadoop FileSystem layer. Each tag becomes one row; corrupt payloads
+    produce a row where _corrupt_record is non-null (mirroring PERMISSIVE mode).
+
+    The returned DataFrame includes _corrupt_record, _file_path, and a synthetic
+    _metadata struct so the transform_job's .withColumn("_file_path", ...) works.
+    """
+    from pyspark.sql import functions as F
+
+    schema = _tag_response_schema()
+    parts = []
+
+    for tag_id, body in tag_payloads.items():
+        raw_str = body.decode("utf-8", errors="replace")
+        file_path = f"{tag_id}.json"
+
+        try:
+            json.loads(raw_str)
+            is_corrupt = False
+        except (json.JSONDecodeError, ValueError):
+            is_corrupt = True
+
+        safe_fp = file_path.replace("'", "''")
+
+        if is_corrupt:
+            safe_corrupt = raw_str[:200].replace("'", "''")
+            row_sql = (
+                f"SELECT CAST(NULL AS STRING) AS _raw,"
+                f" '{safe_fp}' AS _fp,"
+                f" '{safe_corrupt}' AS _corrupt_record"
+            )
+        else:
+            safe_json = raw_str.replace("'", "''")
+            row_sql = (
+                f"SELECT '{safe_json}' AS _raw,"
+                f" '{safe_fp}' AS _fp,"
+                f" CAST(NULL AS STRING) AS _corrupt_record"
+            )
+
+        df = (
+            spark.sql(row_sql)
+            .select(
+                F.from_json(F.col("_raw"), schema).alias("_d"),
+                F.col("_fp"),
+                F.col("_corrupt_record"),
+            )
+            .select("_d.*", "_fp", "_corrupt_record")
+            # Add _metadata struct so .withColumn("_file_path", F.col("_metadata.file_path"))
+            # in transform_job.main() resolves without error.
+            .withColumn("_metadata", F.struct(F.col("_fp").alias("file_path")))
+            .drop("_fp")
+        )
+        parts.append(df)
+
+    result = parts[0]
+    for df in parts[1:]:
+        result = result.unionByName(df)
+    return result
+
+
+def _patch_glue(spark, mock_glue_job, tag_payloads: dict[str, bytes]):
+    """Return patches for all Glue-specific entry points.
+
+    spark.read is replaced with a mock whose .json() returns an in-memory
+    DataFrame built from tag_payloads — no filesystem access occurs.
+    write_parquet_to_s3 is mocked to a no-op (S3 writes not under test).
+    """
     glue_ctx, job = mock_glue_job
+
+    raw_df = _build_raw_df(spark, tag_payloads)
+
+    class _MockReader:
+        def option(self, key, value):
+            return self
+
+        def json(self, path):
+            return raw_df
+
+    mock_spark = MagicMock(wraps=spark)
+    mock_spark.read = _MockReader()
+
     return [
         patch("glue_jobs.scripts.transform_job.getResolvedOptions", return_value=GLUE_ARGS),
-        patch("glue_jobs.scripts.transform_job.create_glue_context", return_value=(glue_ctx, spark, job)),
+        patch("glue_jobs.scripts.transform_job.create_glue_context", return_value=(glue_ctx, mock_spark, job)),
         patch("glue_jobs.scripts.transform_job.load_ssm_config", return_value=SSM_CONFIG),
+        patch("glue_jobs.scripts.transform_job.write_parquet_to_s3", return_value=None),
     ]
 
 
@@ -185,11 +319,15 @@ class TestTransformFaultIsolation:
             _seed_tag_item(dynamodb_table, tag_id)
         _seed_meta_item(dynamodb_table)
 
-        _upload_tag(s3, "TAG-001", _valid_tag_payload("TAG-001", measurement_count=3))
-        _upload_tag(s3, "TAG-002", _valid_tag_payload("TAG-002", measurement_count=2))
+        payloads = {
+            "TAG-001": _valid_tag_payload("TAG-001", measurement_count=3),
+            "TAG-002": _valid_tag_payload("TAG-002", measurement_count=2),
+        }
+        for tag_id, body in payloads.items():
+            _upload_tag(s3, tag_id, body)
 
-        patches = _patch_glue(spark, mock_glue_job)
-        with patches[0], patches[1], patches[2]:
+        patches = _patch_glue(spark, mock_glue_job, payloads)
+        with patches[0], patches[1], patches[2], patches[3]:
             from glue_jobs.scripts import transform_job
             transform_job.main()
 
@@ -206,15 +344,15 @@ class TestTransformFaultIsolation:
             _seed_tag_item(dynamodb_table, tag_id)
         _seed_meta_item(dynamodb_table)
 
-        _upload_tag(s3, "TAG-001", _valid_tag_payload("TAG-001", measurement_count=2))
-        s3.put_object(
-            Bucket=RAW_BUCKET,
-            Key=f"raw/{RUN_ID}/TAG-BAD.json",
-            Body=b"{ this is not valid json !!!",
-        )
+        payloads = {
+            "TAG-001": _valid_tag_payload("TAG-001", measurement_count=2),
+            "TAG-BAD": b"{ this is not valid json !!!",
+        }
+        for tag_id, body in payloads.items():
+            _upload_tag(s3, tag_id, body)
 
-        patches = _patch_glue(spark, mock_glue_job)
-        with patches[0], patches[1], patches[2]:
+        patches = _patch_glue(spark, mock_glue_job, payloads)
+        with patches[0], patches[1], patches[2], patches[3]:
             from glue_jobs.scripts import transform_job
             transform_job.main()  # must NOT raise even though TAG-BAD is corrupt
 
@@ -229,10 +367,11 @@ class TestTransformFaultIsolation:
         _seed_tag_item(dynamodb_table, "TAG-ZERO")
         _seed_meta_item(dynamodb_table)
 
-        _upload_tag(s3, "TAG-ZERO", _null_pk_tag_payload("TAG-ZERO"))
+        payloads = {"TAG-ZERO": _null_pk_tag_payload("TAG-ZERO")}
+        _upload_tag(s3, "TAG-ZERO", payloads["TAG-ZERO"])
 
-        patches = _patch_glue(spark, mock_glue_job)
-        with patches[0], patches[1], patches[2]:
+        patches = _patch_glue(spark, mock_glue_job, payloads)
+        with patches[0], patches[1], patches[2], patches[3]:
             from glue_jobs.scripts import transform_job
             transform_job.main()
 

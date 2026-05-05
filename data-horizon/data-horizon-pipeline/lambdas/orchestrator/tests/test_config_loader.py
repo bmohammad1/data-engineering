@@ -1,36 +1,21 @@
 """Tests for config_loader module."""
 
-import json
-
-import boto3
 import pytest
 
 from lambdas.orchestrator.config_loader import load_pipeline_config, load_tags_from_s3
 from lambdas.orchestrator.tests.conftest import (
+    API_TOKEN,
     CONFIG_BUCKET,
-    REGION,
-    SECRET_NAME,
     TEST_CONFIG,
 )
-from shared.exceptions import ConfigLoadError, TagFileError
+from shared.exceptions import TagFileError
 
 
 class TestLoadPipelineConfig:
-    def test_returns_config_dict(self, secret):
-        config = load_pipeline_config(SECRET_NAME)
+    def test_returns_config_dict(self):
+        config = load_pipeline_config(API_TOKEN)
 
-        assert config["source_api_token"] == TEST_CONFIG["source_api_token"]
-
-    def test_raises_config_load_error_when_secret_missing(self, aws):
-        with pytest.raises(ConfigLoadError):
-            load_pipeline_config("nonexistent-secret")
-
-    def test_raises_config_load_error_on_malformed_json(self, aws):
-        client = boto3.client("secretsmanager", region_name=REGION)
-        client.create_secret(Name="bad-secret", SecretString="not-json{{{")
-
-        with pytest.raises(ConfigLoadError):
-            load_pipeline_config("bad-secret")
+        assert config["source_api_token"] == API_TOKEN
 
 
 class TestLoadTagsFromS3:

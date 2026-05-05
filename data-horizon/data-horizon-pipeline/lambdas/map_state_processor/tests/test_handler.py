@@ -24,7 +24,7 @@ ENDPOINT = f"{API_BASE_URL}/tag/{TAG_ID}"
 
 class TestHandler:
     @pytest.fixture(autouse=True)
-    def setup_all(self, dynamodb_table, s3_buckets, secret, seed_tag_item):
+    def setup_all(self, dynamodb_table, s3_buckets, ssm_parameters, seed_tag_item):
         self.dynamodb = dynamodb_table
         seed_tag_item(RUN_ID, TAG_ID)
 

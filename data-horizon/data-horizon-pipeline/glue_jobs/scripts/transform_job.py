@@ -24,12 +24,20 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
 
-from utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
-from utils.spark_helpers import add_audit_columns, create_glue_context, write_parquet_to_s3
-from utils.dynamodb_updater import (
-    bulk_update_tag_transform_status,
-    update_run_transform_status,
-)
+try:
+    from glue_jobs.utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
+    from glue_jobs.utils.spark_helpers import add_audit_columns, create_glue_context, write_parquet_to_s3
+    from glue_jobs.utils.dynamodb_updater import (
+        bulk_update_tag_transform_status,
+        update_run_transform_status,
+    )
+except ImportError:
+    from utils.schema_definitions import LIST_TABLES, PRIMARY_KEYS, TABLE_SCHEMAS
+    from utils.spark_helpers import add_audit_columns, create_glue_context, write_parquet_to_s3
+    from utils.dynamodb_updater import (
+        bulk_update_tag_transform_status,
+        update_run_transform_status,
+    )
 
 from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS, load_ssm_config
 from shared.logger import configure_logging, run_id_ctx

@@ -108,6 +108,11 @@ def s3_buckets(aws):
 
 
 @pytest.fixture()
+def secret():
+    yield None
+
+
+@pytest.fixture()
 def lambda_context():
     ctx = MagicMock()
     ctx.aws_request_id = "test-map-request-id-456"

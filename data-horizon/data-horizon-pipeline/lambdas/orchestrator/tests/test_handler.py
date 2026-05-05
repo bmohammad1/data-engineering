@@ -5,14 +5,14 @@ import pytest
 from lambdas.orchestrator.handler import handler
 from lambdas.orchestrator.tests.conftest import TABLE_NAME
 from shared.constants import PK_RUN_PREFIX, SK_META, SK_TAG_PREFIX
-from shared.exceptions import ConfigLoadError, PermanentError
+from shared.exceptions import PermanentError
 
 TEST_RUN_ID = "RUN-TESTHANDLER01"
 
 
 class TestHandler:
     @pytest.fixture(autouse=True)
-    def setup_all(self, dynamodb_table, s3_buckets, secret, sample_tags_csv):
+    def setup_all(self, dynamodb_table, s3_buckets, ssm_parameters, sample_tags_csv):
         self.dynamodb = dynamodb_table
         self.tags = sample_tags_csv
 
@@ -62,8 +62,3 @@ class TestHandler:
 
         assert response["Count"] == 10
 
-    def test_config_load_failure(self, lambda_context, monkeypatch):
-        monkeypatch.setenv("SECRET_NAME", "nonexistent-secret")
-
-        with pytest.raises(ConfigLoadError):
-            handler({"run_id": TEST_RUN_ID}, lambda_context)

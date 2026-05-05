@@ -19,6 +19,7 @@ ORCHESTRATION_BUCKET = "test-orchestration-bucket"
 RAW_BUCKET = "test-raw-bucket"
 API_BASE_URL = "https://mock-api.example.com/dev"
 API_TOKEN = "test-bearer-token-abc123"
+SECRET_NAME = ""
 
 SSM_PARAMS = {
     "source-api-token":        API_TOKEN,
@@ -117,6 +118,11 @@ def sample_tags_csv(s3_buckets):
         Body=csv_content.encode("utf-8"),
     )
     return [f"TAG-{i:05d}" for i in range(1, 11)]
+
+
+@pytest.fixture()
+def secret():
+    yield None
 
 
 @pytest.fixture()

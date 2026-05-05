@@ -13,10 +13,16 @@ from shared.constants import STATUS_FAILED, STATUS_SUCCESS, load_ssm_config
 from shared.exceptions import PermanentError, RetryableError
 from shared.logger import configure_logging, run_id_ctx
 
-from api_client import fetch_tag_data
-from dynamodb_updater import update_tag_status
-from response_processor import extract_records
-from s3_writer import write_raw_response
+try:
+    from .api_client import fetch_tag_data
+    from .dynamodb_updater import update_tag_status
+    from .response_processor import extract_records
+    from .s3_writer import write_raw_response
+except ImportError:
+    from api_client import fetch_tag_data
+    from dynamodb_updater import update_tag_status
+    from response_processor import extract_records
+    from s3_writer import write_raw_response
 
 configure_logging()
 logger = logging.getLogger(__name__)
