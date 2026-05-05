@@ -64,6 +64,27 @@ variable "sns_topic_arn" {
   type        = string
 }
 
+variable "dynamodb_table_name" {
+  description = "Pipeline state DynamoDB table name"
+  type        = string
+}
+
+variable "config_loader_timeout_ms" {
+  description = "Config Loader Lambda timeout in milliseconds (used to compute 80% duration alarm threshold)"
+  type        = number
+}
+
+variable "map_processor_timeout_ms" {
+  description = "Map state processor Lambda timeout in milliseconds (used to compute 80% duration alarm threshold)"
+  type        = number
+}
+
+variable "glue_heap_threshold_bytes" {
+  description = "JVM heap alarm threshold in bytes — set to 80% of G.1X driver heap (10 GB = 10737418240, 80% = 8589934592)"
+  type        = number
+  default     = 8589934592
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

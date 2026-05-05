@@ -209,5 +209,8 @@ module "cloudwatch" {
   child4_state_machine_arn          = module.step_function.child4_state_machine_arn
   extraction_failures_queue_name    = "${local.name_prefix}-extraction-failures"
   sns_topic_arn                     = module.sns.topic_arn
+  dynamodb_table_name               = module.dynamodb.table_name
+  config_loader_timeout_ms          = var.config_loader_timeout * 1000
+  map_processor_timeout_ms          = var.map_processor_timeout * 1000
   tags                              = local.common_tags
 }
