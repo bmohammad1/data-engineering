@@ -227,6 +227,7 @@ def main() -> None:
 
     tag_stats: dict[str, dict] = {}
     total_records_written = 0
+    total_records_extracted = 0
 
     # Single S3 read with PERMISSIVE mode — _corrupt_record captures unparseable rows
     # and _file_path maps each row back to its source file for corrupt tag detection.
@@ -275,6 +276,7 @@ def main() -> None:
             else:
                 record_count = transformed_dataframe.count()
             total_records_written += record_count
+            total_records_extracted += record_count
 
             transformed_dataframe.unpersist()
 
@@ -367,6 +369,7 @@ def main() -> None:
         STATUS_SUCCESS,
         transform_tags_success=len(tags_success),
         transform_tags_failed=len(tags_failed),
+        records_extracted=total_records_extracted,
         records_transformed=total_records_written,
         records_dropped=0,
         duration_ms=int(total_duration_ms),

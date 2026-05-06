@@ -203,10 +203,6 @@ module "cloudwatch" {
   transform_glue_job_name           = module.glue.transform_job_name
   validation_glue_job_name          = module.glue.validation_job_name
   parent_state_machine_arn          = module.step_function.parent_state_machine_arn
-  child1_state_machine_arn          = module.step_function.child1_state_machine_arn
-  child2_state_machine_arn          = module.step_function.child2_state_machine_arn
-  child3_state_machine_arn          = module.step_function.child3_state_machine_arn
-  child4_state_machine_arn          = module.step_function.child4_state_machine_arn
   extraction_failures_queue_name    = "${local.name_prefix}-extraction-failures"
   sns_topic_arn                     = module.sns.topic_arn
   dynamodb_table_name               = module.dynamodb.table_name

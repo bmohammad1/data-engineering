@@ -336,6 +336,7 @@ def update_run_transform_status(
     status: str,
     transform_tags_success: int = 0,
     transform_tags_failed: int = 0,
+    records_extracted: int = 0,
     records_transformed: int = 0,
     records_dropped: int = 0,
     duration_ms: int = 0,
@@ -354,6 +355,7 @@ def update_run_transform_status(
         f"SET transform_status = :status{overall_status_clause}"
         ", transform_tags_success = :tags_ok"
         ", transform_tags_failed = :tags_fail"
+        ", transform_records_extracted = :extracted"
         ", transform_records_written = :written"
         ", transform_records_dropped = :dropped"
     )
@@ -361,6 +363,7 @@ def update_run_transform_status(
         ":status":    {"S": status},
         ":tags_ok":   {"N": str(transform_tags_success)},
         ":tags_fail": {"N": str(transform_tags_failed)},
+        ":extracted": {"N": str(records_extracted)},
         ":written":   {"N": str(records_transformed)},
         ":dropped":   {"N": str(records_dropped)},
     }
@@ -390,6 +393,7 @@ def update_run_transform_status(
             "status": status,
             "transform_tags_success": transform_tags_success,
             "transform_tags_failed": transform_tags_failed,
+            "records_extracted": records_extracted,
             "records_transformed": records_transformed,
             "records_dropped": records_dropped,
             "transform_duration_ms": duration_ms,

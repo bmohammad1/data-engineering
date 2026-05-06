@@ -50,12 +50,13 @@ class JsonFormatter(logging.Formatter):
 
 
 _is_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+_is_glue = bool(os.environ.get("GLUE_COMMAND_CRITERIA"))
 
 
 def configure_logging(log_level: str | None = None) -> None:
     """Configure the root logger with structured output and run_id injection."""
     level = (log_level or os.environ.get("LOG_LEVEL", "INFO")).upper()
-    use_json = _is_lambda
+    use_json = _is_lambda or _is_glue
 
     if use_json:
         formatter_config: dict = {"()": f"{__name__}.JsonFormatter"}
