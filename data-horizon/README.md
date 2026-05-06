@@ -1,6 +1,6 @@
 # Data Horizon
 
-Monorepo for the Data Horizon platform — an end-to-end industrial/IoT data ingestion and analytics system.
+Monorepo for the Data Horizon platform — an end-to-end industrial/IoT data ingestion system.
 
 ## Projects
 
@@ -16,8 +16,7 @@ EventBridge (6h schedule)
     └── Step Functions
             ├── Lambda Orchestrator → loads config, generates Map State input
             ├── Map State (Lambda) → calls source-mock-api, writes raw JSON to S3
-            ├── Glue Transform → raw JSON → cleaned JSON
-            ├── Glue Validation → cleaned → Parquet (or bad bucket)
+            ├── Glue Transform → raw JSON → cleaned JSON->Glue Validation → cleaned → Parquet (or bad bucket)
             └── Redshift COPY → Parquet → analytics tables
 ```
 
