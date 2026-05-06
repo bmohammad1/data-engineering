@@ -1,0 +1,192 @@
+"""Per-table data quality validation rules.
+
+Each rule is a (rule_name, Column_expression) pair where the expression
+evaluates to True for a valid row. apply_validation() splits a DataFrame
+into a valid set and an invalid set; the invalid set gets a
+_validation_errors column listing every rule name that failed.
+"""
+
+import logging
+
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+from pyspark.sql.column import Column
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Allowed enum values per column
+# ---------------------------------------------------------------------------
+
+_QUALITY_FLAGS = {"GOOD", "BAD", "UNCERTAIN"}
+_ALARM_STATUSES = {"ACTIVE", "CLEARED", "ACKNOWLEDGED"}
+_PAYMENT_STATUSES = {"PAID", "UNPAID", "OVERDUE"}
+_COMPLIANCE_STATUSES = {"COMPLIANT", "NON_COMPLIANT", "PENDING"}
+
+
+def _in_set(col_name: str, allowed: set[str]) -> Column:
+    """Return a Column that is True when the value is in the allowed set."""
+    allowed_as_list = list(allowed)
+    return F.col(col_name).isin(allowed_as_list)
+
+
+def _not_null_or_empty(col_name: str) -> Column:
+    """Return a Column that is True when the value is non-null and non-empty."""
+    value_is_not_null = F.col(col_name).isNotNull()
+    value_is_not_empty = F.trim(F.col(col_name)) != ""
+    return value_is_not_null & value_is_not_empty
+
+
+# ---------------------------------------------------------------------------
+# Per-table rule definitions
+# ---------------------------------------------------------------------------
+
+# Each entry is a list of (rule_name, passing_condition) tuples.
+# A row is VALID only if ALL conditions evaluate to True.
+#
+# Rules are wrapped in a callable so PySpark Column expressions are constructed
+# lazily (at call time, not at module import time). This allows the module to
+# be imported without an active SparkContext — required for unit testing.
+
+def _build_rules() -> dict[str, list[tuple[str, Column]]]:
+    return {
+        "tag": [
+            ("tag_id_required", _not_null_or_empty("TagID")),
+        ],
+        "equipment": [
+            ("equipment_id_required", _not_null_or_empty("EquipmentID")),
+        ],
+        "location": [
+            ("location_id_required", _not_null_or_empty("LocationID")),
+        ],
+        "customer": [
+            ("customer_id_required", _not_null_or_empty("CustomerID")),
+        ],
+        "measurements": [
+            ("measurement_id_required", _not_null_or_empty("MeasurementID")),
+            ("tag_id_required",         _not_null_or_empty("TagID")),
+            ("value_not_null",          F.col("Value").isNotNull()),
+            ("timestamp_not_null",      F.col("Timestamp").isNotNull()),
+            ("quality_flag_valid",      _in_set("QualityFlag", _QUALITY_FLAGS)),
+        ],
+        "alarms": [
+            ("alarm_id_required",      _not_null_or_empty("AlarmID")),
+            ("tag_id_required",        _not_null_or_empty("TagID")),
+            ("threshold_not_null",     F.col("ThresholdValue").isNotNull()),
+            ("threshold_non_negative", F.col("ThresholdValue") >= 0),
+            ("timestamp_not_null",     F.col("Timestamp").isNotNull()),
+            ("status_valid",           _in_set("Status", _ALARM_STATUSES)),
+        ],
+        "maintenance": [
+            ("maintenance_id_required", _not_null_or_empty("MaintenanceID")),
+            ("tag_id_required",         _not_null_or_empty("TagID")),
+            ("date_not_null",           F.col("MaintenanceDate").isNotNull()),
+            ("technician_required",     _not_null_or_empty("Technician")),
+        ],
+        "events": [
+            ("event_id_required",  _not_null_or_empty("EventID")),
+            ("tag_id_required",    _not_null_or_empty("TagID")),
+            ("timestamp_not_null", F.col("Timestamp").isNotNull()),
+        ],
+        "contracts": [
+            ("contract_id_required", _not_null_or_empty("ContractID")),
+            ("customer_id_required", _not_null_or_empty("CustomerID")),
+            ("tag_id_required",      _not_null_or_empty("TagID")),
+            ("volume_positive",      F.col("ContractVolume") > 0),
+            ("price_positive",       F.col("PricePerUnit") > 0),
+            (
+                "end_after_start",
+                F.col("ContractEndDate").isNotNull()
+                & F.col("ContractStartDate").isNotNull()
+                & (F.col("ContractEndDate") >= F.col("ContractStartDate")),
+            ),
+        ],
+        "billing": [
+            ("billing_id_required",      _not_null_or_empty("BillingID")),
+            ("tag_id_required",          _not_null_or_empty("TagID")),
+            ("customer_id_required",     _not_null_or_empty("CustomerID")),
+            ("consumption_non_negative", F.col("ConsumptionVolume") >= 0),
+            ("amount_non_negative",      F.col("TotalAmount") >= 0),
+            ("payment_status_valid",     _in_set("PaymentStatus", _PAYMENT_STATUSES)),
+        ],
+        "inventory": [
+            ("inventory_id_required", _not_null_or_empty("InventoryID")),
+            ("tag_id_required",       _not_null_or_empty("TagID")),
+            ("quantity_non_negative", F.col("Quantity") >= 0),
+        ],
+        "regulatory_compliance": [
+            ("compliance_id_required",   _not_null_or_empty("ComplianceID")),
+            ("tag_id_required",          _not_null_or_empty("TagID")),
+            ("inspection_date_not_null", F.col("InspectionDate").isNotNull()),
+        ],
+        "financial_forecasts": [
+            ("forecast_id_required",     _not_null_or_empty("ForecastID")),
+            ("tag_id_required",          _not_null_or_empty("TagID")),
+            ("consumption_non_negative", F.col("ExpectedConsumption") >= 0),
+            ("revenue_non_negative",     F.col("ExpectedRevenue") >= 0),
+            (
+                "risk_factor_in_range",
+                F.col("RiskFactor").isNotNull()
+                & (F.col("RiskFactor") >= 0.0)
+                & (F.col("RiskFactor") <= 1.0),
+            ),
+        ],
+    }
+
+
+_TABLE_RULES: dict[str, list[tuple[str, Column]]] | None = None
+
+
+def _get_table_rules() -> dict[str, list[tuple[str, Column]]]:
+    global _TABLE_RULES
+    if _TABLE_RULES is None:
+        _TABLE_RULES = _build_rules()
+    return _TABLE_RULES
+
+
+def apply_validation(dataframe: DataFrame, table: str) -> tuple[DataFrame, DataFrame]:
+    """Split dataframe into (valid_dataframe, invalid_dataframe) based on per-table rules.
+
+    invalid_dataframe gets an extra _validation_errors column listing every
+    rule name that failed, separated by '; '.
+    """
+    table_rules = _get_table_rules().get(table, [])
+
+    table_has_no_rules = len(table_rules) == 0
+    if table_has_no_rules:
+        logger.warning("No validation rules defined for table '%s' — treating all rows as valid", table)
+        empty_dataframe = dataframe.filter(F.lit(False))
+        return dataframe, empty_dataframe
+
+    # For each rule, produce a column that contains the rule name when the rule
+    # failed, or null when the rule passed. These are later joined into one
+    # comma-separated error string per row.
+    failed_rule_name_columns = []
+    for rule_name, passing_condition in table_rules:
+        rule_failed = ~passing_condition
+        failed_rule_name_column = F.when(rule_failed, F.lit(rule_name)).otherwise(F.lit(None))
+        failed_rule_name_columns.append(failed_rule_name_column)
+
+    # Concatenate all non-null failed rule names into a single string per row.
+    coalesced_parts = [F.coalesce(part, F.lit("")) for part in failed_rule_name_columns]
+    errors_column = F.concat_ws("; ", *coalesced_parts)
+
+    # Remove leading/trailing/duplicate separators that arise from empty strings.
+    errors_column = F.regexp_replace(errors_column, r"^(; )+|(; )+$|(?<=; )(; )+", "")
+
+    dataframe_with_errors = dataframe.withColumn("_validation_errors", errors_column)
+
+    # A row is valid when its error string is null or empty after trimming.
+    row_has_no_errors = (
+        F.col("_validation_errors").isNull()
+        | (F.trim(F.col("_validation_errors")) == "")
+    )
+    valid_dataframe = dataframe_with_errors.filter(row_has_no_errors).drop("_validation_errors")
+
+    row_has_errors = (
+        F.col("_validation_errors").isNotNull()
+        & (F.trim(F.col("_validation_errors")) != "")
+    )
+    invalid_dataframe = dataframe_with_errors.filter(row_has_errors)
+
+    return valid_dataframe, invalid_dataframe

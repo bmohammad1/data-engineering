@@ -11,13 +11,16 @@ resource "aws_glue_job" "transform" {
   default_arguments = {
     "--job-language"                     = "python"
     "--enable-continuous-cloudwatch-log" = "true"
-    "--SECRET_NAME"                      = var.secret_name
+    "--ENVIRONMENT"                      = var.environment
+    "--LOG_LEVEL"                        = "INFO"
+    "--extra-py-files"                   = "s3://${var.scripts_bucket_name}/scripts/utils.zip"
+    "--conf"                             = "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.kryo.unsafe=true"
   }
 
   glue_version      = "4.0"
-  number_of_workers = 2
-  worker_type       = "G.1X"
-  timeout           = 60
+  number_of_workers = var.transform_workers
+  worker_type       = var.transform_worker_type
+  timeout           = var.transform_timeout
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-transform"
@@ -37,13 +40,16 @@ resource "aws_glue_job" "validation" {
   default_arguments = {
     "--job-language"                     = "python"
     "--enable-continuous-cloudwatch-log" = "true"
-    "--SECRET_NAME"                      = var.secret_name
+    "--ENVIRONMENT"                      = var.environment
+    "--LOG_LEVEL"                        = "INFO"
+    "--extra-py-files"                   = "s3://${var.scripts_bucket_name}/scripts/utils.zip"
+    "--conf"                             = "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.kryo.unsafe=true"
   }
 
   glue_version      = "4.0"
-  number_of_workers = 2
-  worker_type       = "G.1X"
-  timeout           = 60
+  number_of_workers = var.validation_workers
+  worker_type       = var.validation_worker_type
+  timeout           = var.validation_timeout
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-validation"

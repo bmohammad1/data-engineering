@@ -1,37 +1,36 @@
 locals {
-  orchestrator_zip        = "${path.module}/../../../lambdas/orchestrator/package/lambda.zip"
+  config_loader_zip       = "${path.module}/../../../lambdas/orchestrator/package/lambda.zip"
   map_state_processor_zip = "${path.module}/../../../lambdas/map_state_processor/package/lambda.zip"
 }
 
 # =============================================================================
-# Orchestrator Lambda
+# Config Loader Lambda
 # =============================================================================
 
-resource "aws_lambda_function" "orchestrator" {
-  function_name    = "${var.name_prefix}-orchestrator"
-  role             = var.orchestrator_role_arn
+resource "aws_lambda_function" "config_loader" {
+  function_name    = "${var.name_prefix}-config-loader"
+  role             = var.config_loader_role_arn
   handler          = "handler.handler"
   runtime          = "python3.12"
-  filename         = local.orchestrator_zip
-  source_code_hash = filebase64sha256(local.orchestrator_zip)
-  memory_size      = var.memory_size
-  timeout          = var.timeout
+  filename         = local.config_loader_zip
+  source_code_hash = filebase64sha256(local.config_loader_zip)
+  memory_size      = var.config_loader_memory
+  timeout          = var.config_loader_timeout
   architectures    = ["x86_64"]
 
   environment {
     variables = {
-      SECRET_NAME = var.secret_name
       ENVIRONMENT = var.environment
     }
   }
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-orchestrator"
+    Name = "${var.name_prefix}-config-loader"
   })
 }
 
-resource "aws_cloudwatch_log_group" "orchestrator" {
-  name              = "/aws/lambda/${aws_lambda_function.orchestrator.function_name}"
+resource "aws_cloudwatch_log_group" "config_loader" {
+  name              = "/aws/lambda/${aws_lambda_function.config_loader.function_name}"
   retention_in_days = 30
 
   tags = var.tags
@@ -48,13 +47,12 @@ resource "aws_lambda_function" "map_state_processor" {
   runtime          = "python3.12"
   filename         = local.map_state_processor_zip
   source_code_hash = filebase64sha256(local.map_state_processor_zip)
-  memory_size      = var.memory_size
-  timeout          = var.timeout
+  memory_size      = var.map_processor_memory
+  timeout          = var.map_processor_timeout
   architectures    = ["x86_64"]
 
   environment {
     variables = {
-      SECRET_NAME = var.secret_name
       ENVIRONMENT = var.environment
     }
   }

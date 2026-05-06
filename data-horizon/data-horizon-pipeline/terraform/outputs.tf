@@ -20,6 +20,11 @@ output "s3_orchestration_bucket_name" {
   value       = module.s3.orchestration_bucket_name
 }
 
+output "s3_scripts_bucket_name" {
+  description = "S3 bucket for Glue scripts and utils zip"
+  value       = module.s3.scripts_bucket_name
+}
+
 # --- DynamoDB ---
 
 output "dynamodb_table_name" {
@@ -46,18 +51,18 @@ output "redshift_database_name" {
   value       = module.redshift.database_name
 }
 
-# --- Secrets Manager ---
+# --- SSM Parameter Store ---
 
-output "secret_name" {
-  description = "Secrets Manager secret name for pipeline config"
-  value       = module.secrets_manager.secret_name
+output "ssm_parameter_path_prefix" {
+  description = "SSM Parameter Store path prefix for all pipeline config"
+  value       = module.ssm_parameters.parameter_path_prefix
 }
 
 # --- Lambda ---
 
-output "orchestrator_function_name" {
-  description = "Orchestrator Lambda function name"
-  value       = module.lambda.orchestrator_function_name
+output "config_loader_function_name" {
+  description = "Config Loader Lambda function name"
+  value       = module.lambda.config_loader_function_name
 }
 
 output "map_state_processor_function_name" {

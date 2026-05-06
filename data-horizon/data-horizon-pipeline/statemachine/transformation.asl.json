@@ -1,0 +1,80 @@
+{
+  "Comment": "Child3: Invoke Glue transform job then validation job in sequence",
+  "StartAt": "RunTransformJob",
+  "States": {
+    "RunTransformJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${transform_glue_job_name}",
+        "Arguments": {
+          "--run_id.$": "$.run_id"
+        }
+      },
+      "TimeoutSeconds": 3600,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.AmazonGlueException", "States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "TransformationFailed"
+        }
+      ],
+      "ResultPath": null,
+      "Next": "RunValidationJob"
+    },
+    "RunValidationJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${validation_glue_job_name}",
+        "Arguments": {
+          "--run_id.$": "$.run_id"
+        }
+      },
+      "TimeoutSeconds": 3600,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.AmazonGlueException", "States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "ValidationFailed"
+        }
+      ],
+      "ResultPath": null,
+      "Next": "TransformationSuccess"
+    },
+    "TransformationSuccess": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "status": "SUCCESS"
+      },
+      "End": true
+    },
+    "TransformationFailed": {
+      "Type": "Fail",
+      "Error": "TransformationFailed",
+      "Cause": "Glue transform job failed after retries"
+    },
+    "ValidationFailed": {
+      "Type": "Fail",
+      "Error": "ValidationFailed",
+      "Cause": "Glue validation job failed after retries"
+    }
+  }
+}

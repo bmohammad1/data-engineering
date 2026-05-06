@@ -3,7 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query, status
+from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 
 from app.data_generator import (
@@ -27,7 +27,6 @@ from app.models import (
     Location,
     Tag,
     TagListResponse,
-    TagResponse,
 )
 from app.static_data import CUSTOMERS, EQUIPMENT, LOCATIONS, TAGS
 
@@ -88,18 +87,13 @@ def list_tags() -> TagListResponse:
     return TagListResponse(tags=list(TAGS.keys()))
 
 
-@app.get("/tag/{tag_id}", response_model=TagResponse, status_code=status.HTTP_200_OK)
-def get_tag(
-    tag_id: str,
-    dirty: bool = Query(
-        default=False,
-        description="When true, inject realistic data quality issues (duplicates, extra columns, type corruption).",
-    ),
-) -> TagResponse:
+@app.get("/tag/{tag_id}", status_code=status.HTTP_200_OK)
+def get_tag(tag_id: str) -> JSONResponse:
     """Return tag metadata plus randomly generated data from every related table.
 
-    FK constraints are enforced: equipment, location, and customer references
-    are resolved from the static lookup tables.
+    All data includes realistic quality issues: duplicates, extra columns, and
+    type corruption. FK constraints are enforced for equipment, location, and
+    customer references.
     """
     tag_data = TAGS.get(tag_id)
     if not tag_data:
@@ -139,39 +133,20 @@ def get_tag(
         + len(compliance)
         + len(forecasts)
     )
-    request_log_ctx.get({}).update(
-        tag_id=tag_id, record_count=record_count, dirty=dirty,
-    )
+    request_log_ctx.get({}).update(tag_id=tag_id, record_count=record_count)
 
-    if dirty:
-        return JSONResponse(content={
-            "tag": tag.model_dump(mode="json"),
-            "equipment": Equipment(**EQUIPMENT[equipment_id]).model_dump(mode="json"),
-            "location": Location(**LOCATIONS[location_id]).model_dump(mode="json"),
-            "customer": Customer(**CUSTOMERS[customer_id]).model_dump(mode="json"),
-            "measurements": apply_dirty_data(measurements, "measurements"),
-            "alarms": apply_dirty_data(alarms, "alarms"),
-            "maintenance": apply_dirty_data(maintenance, "maintenance"),
-            "events": apply_dirty_data(events, "events"),
-            "contracts": apply_dirty_data(contracts, "contracts"),
-            "billing": apply_dirty_data(billing, "billing"),
-            "inventory": apply_dirty_data(inventory, "inventory"),
-            "regulatory_compliance": apply_dirty_data(compliance, "compliance"),
-            "financial_forecasts": apply_dirty_data(forecasts, "forecasts"),
-        })
-
-    return TagResponse(
-        tag=tag,
-        equipment=Equipment(**EQUIPMENT[equipment_id]),
-        location=Location(**LOCATIONS[location_id]),
-        measurements=measurements,
-        alarms=alarms,
-        maintenance=maintenance,
-        events=events,
-        customer=Customer(**CUSTOMERS[customer_id]),
-        contracts=contracts,
-        billing=billing,
-        inventory=inventory,
-        regulatory_compliance=compliance,
-        financial_forecasts=forecasts,
-    )
+    return JSONResponse(content={
+        "tag": tag.model_dump(mode="json"),
+        "equipment": Equipment(**EQUIPMENT[equipment_id]).model_dump(mode="json"),
+        "location": Location(**LOCATIONS[location_id]).model_dump(mode="json"),
+        "customer": Customer(**CUSTOMERS[customer_id]).model_dump(mode="json"),
+        "measurements": apply_dirty_data(measurements, "measurements"),
+        "alarms": apply_dirty_data(alarms, "alarms"),
+        "maintenance": apply_dirty_data(maintenance, "maintenance"),
+        "events": apply_dirty_data(events, "events"),
+        "contracts": apply_dirty_data(contracts, "contracts"),
+        "billing": apply_dirty_data(billing, "billing"),
+        "inventory": apply_dirty_data(inventory, "inventory"),
+        "regulatory_compliance": apply_dirty_data(compliance, "compliance"),
+        "financial_forecasts": apply_dirty_data(forecasts, "forecasts"),
+    })

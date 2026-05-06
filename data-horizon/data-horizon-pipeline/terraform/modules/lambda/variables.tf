@@ -8,13 +8,8 @@ variable "environment" {
   type        = string
 }
 
-variable "secret_name" {
-  description = "Secrets Manager secret name for pipeline config"
-  type        = string
-}
-
-variable "orchestrator_role_arn" {
-  description = "IAM role ARN for the orchestrator Lambda"
+variable "config_loader_role_arn" {
+  description = "IAM role ARN for the config loader Lambda"
   type        = string
 }
 
@@ -23,14 +18,26 @@ variable "map_processor_role_arn" {
   type        = string
 }
 
-variable "memory_size" {
-  description = "Lambda memory in MB"
+variable "config_loader_memory" {
+  description = "Memory in MB for the config loader Lambda"
   type        = number
   default     = 256
 }
 
-variable "timeout" {
-  description = "Lambda timeout in seconds"
+variable "config_loader_timeout" {
+  description = "Timeout in seconds for the config loader Lambda"
+  type        = number
+  default     = 60
+}
+
+variable "map_processor_memory" {
+  description = "Memory in MB for the map state processor Lambda"
+  type        = number
+  default     = 256
+}
+
+variable "map_processor_timeout" {
+  description = "Timeout in seconds for the map state processor Lambda"
   type        = number
   default     = 60
 }

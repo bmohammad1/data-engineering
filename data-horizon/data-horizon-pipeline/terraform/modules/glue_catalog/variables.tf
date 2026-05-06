@@ -18,6 +18,11 @@ variable "validated_bucket_name" {
   type        = string
 }
 
+variable "bad_bucket_name" {
+  description = "S3 bucket name for quarantined invalid records"
+  type        = string
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

@@ -9,8 +9,8 @@ variable "retention_days" {
   default     = 30
 }
 
-variable "orchestrator_function_name" {
-  description = "Orchestrator Lambda function name"
+variable "config_loader_function_name" {
+  description = "Config Loader Lambda function name"
   type        = string
 }
 
@@ -34,25 +34,6 @@ variable "parent_state_machine_arn" {
   type        = string
 }
 
-variable "child1_state_machine_arn" {
-  description = "Child1 (config) state machine ARN"
-  type        = string
-}
-
-variable "child2_state_machine_arn" {
-  description = "Child2 (extraction) state machine ARN"
-  type        = string
-}
-
-variable "child3_state_machine_arn" {
-  description = "Child3 (transformation) state machine ARN"
-  type        = string
-}
-
-variable "child4_state_machine_arn" {
-  description = "Child4 (Redshift load) state machine ARN"
-  type        = string
-}
 
 variable "extraction_failures_queue_name" {
   description = "Extraction failures SQS queue name"
@@ -62,6 +43,27 @@ variable "extraction_failures_queue_name" {
 variable "sns_topic_arn" {
   description = "Pipeline failure alerts SNS topic ARN (alarm target)"
   type        = string
+}
+
+variable "dynamodb_table_name" {
+  description = "Pipeline state DynamoDB table name"
+  type        = string
+}
+
+variable "config_loader_timeout_ms" {
+  description = "Config Loader Lambda timeout in milliseconds (used to compute 80% duration alarm threshold)"
+  type        = number
+}
+
+variable "map_processor_timeout_ms" {
+  description = "Map state processor Lambda timeout in milliseconds (used to compute 80% duration alarm threshold)"
+  type        = number
+}
+
+variable "glue_heap_threshold_bytes" {
+  description = "JVM heap alarm threshold in bytes — set to 80% of G.1X driver heap (10 GB = 10737418240, 80% = 8589934592)"
+  type        = number
+  default     = 8589934592
 }
 
 variable "tags" {

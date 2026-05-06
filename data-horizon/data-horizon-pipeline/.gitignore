@@ -20,7 +20,7 @@ terraform/.terraform/
 terraform/*.tfstate*
 terraform/.terraform.lock.hcl
 *.tfvars
-terraform/environments/*/terraform.tfvars
+# terraform/environments/*/terraform.tfvars
 
 # IDE
 .vscode/

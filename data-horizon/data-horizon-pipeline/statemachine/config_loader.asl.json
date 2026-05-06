@@ -1,0 +1,58 @@
+{
+  "Comment": "Config Loader: load source config, generate map file, and prepare extraction input",
+  "StartAt": "LoadConfigAndGenerateMapFile",
+  "States": {
+    "LoadConfigAndGenerateMapFile": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${orchestrator_lambda_arn}",
+        "Payload": {
+          "run_id.$": "$.run_id"
+        }
+      },
+      "TimeoutSeconds": 300,
+      "ResultPath": "$.orchestrator_output",
+      "ResultSelector": {
+        "run_id.$": "$.Payload.run_id",
+        "map_items_s3_key.$": "$.Payload.map_items_s3_key",
+        "concurrency.$": "$.Payload.concurrency"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "RetryableError"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ConfigLoaderFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "ConfigLoaderSuccess"
+    },
+    "ConfigLoaderSuccess": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.orchestrator_output.run_id",
+        "map_items_s3_key.$": "$.orchestrator_output.map_items_s3_key",
+        "concurrency.$": "$.orchestrator_output.concurrency"
+      },
+      "End": true
+    },
+    "ConfigLoaderFailed": {
+      "Type": "Fail",
+      "Error": "ConfigLoaderFailed",
+      "Cause": "Orchestrator Lambda failed"
+    }
+  }
+}

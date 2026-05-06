@@ -36,3 +36,4 @@ Thumbs.db
 .env
 *.pem
 credentials.json
+.coverage

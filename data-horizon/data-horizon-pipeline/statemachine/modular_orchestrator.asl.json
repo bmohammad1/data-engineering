@@ -1,0 +1,240 @@
+{
+  "Comment": "Modular Orchestrator: coordinates Config Loader → Data Extractor → Transformation → Redshift Load",
+  "StartAt": "DecideGenerateRunId",
+  "States": {
+    "DecideGenerateRunId": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipGenerateRunId",
+          "IsPresent": true,
+          "Next": "CheckSkipGenerateRunId"
+        }
+      ],
+      "Default": "GenerateRunId"
+    },
+    "CheckSkipGenerateRunId": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipGenerateRunId",
+          "BooleanEquals": true,
+          "Next": "PromoteProvidedRunId"
+        }
+      ],
+      "Default": "GenerateRunId"
+    },
+    "PromoteProvidedRunId": {
+      "Type": "Pass",
+      "InputPath": "$.manualInputs.run_id",
+      "ResultPath": "$.run_id",
+      "Next": "AttachOptionalInputs"
+    },
+    "GenerateRunId": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "States.Format('RUN-{}', States.UUID())"
+      },
+      "ResultPath": "$.run_id_wrapper",
+      "Next": "SetGeneratedRunId"
+    },
+    "SetGeneratedRunId": {
+      "Type": "Pass",
+      "InputPath": "$.run_id_wrapper.run_id",
+      "ResultPath": "$.run_id",
+      "Next": "AttachOptionalInputs"
+    },
+    "AttachOptionalInputs": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.manualInputs",
+          "IsPresent": true,
+          "Next": "AttachManualInputs"
+        }
+      ],
+      "Default": "DecideStartPoint"
+    },
+    "AttachManualInputs": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_id.$": "$.run_id",
+        "startFrom.$": "$.startFrom",
+        "manualInputs.$": "$.manualInputs"
+      },
+      "Next": "DecideStartPoint"
+    },
+    "DecideStartPoint": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.startFrom",
+          "StringEquals": "data_extractor",
+          "Next": "PrepareExtractorInputManual"
+        },
+        {
+          "Variable": "$.startFrom",
+          "StringEquals": "transformation",
+          "Next": "PrepareTransformationInputManual"
+        }
+      ],
+      "Default": "RunConfigLoader"
+    },
+    "RunConfigLoader": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${config_loader_arn}",
+        "Input": {
+          "run_id.$": "$.run_id"
+        }
+      },
+      "TimeoutSeconds": 600,
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.config_loader",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyOrchestratorFailure"
+        }
+      ],
+      "Next": "PrepareExtractorInputFromConfig"
+    },
+    "PrepareExtractorInputFromConfig": {
+      "Type": "Pass",
+      "Parameters": {
+        "extractor_input.$": "$.config_loader.output"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "RunDataExtractor"
+    },
+    "PrepareExtractorInputManual": {
+      "Type": "Pass",
+      "InputPath": "$.run_id",
+      "ResultPath": "$.manualInputs.run_id",
+      "Next": "SetExtractorInput"
+    },
+    "SetExtractorInput": {
+      "Type": "Pass",
+      "Parameters": {
+        "extractor_input.$": "$.manualInputs"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "RunDataExtractor"
+    },
+    "RunDataExtractor": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${data_extractor_arn}",
+        "Input.$": "$.prepared.extractor_input"
+      },
+      "TimeoutSeconds": 7200,
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.data_extractor",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyOrchestratorFailure"
+        }
+      ],
+      "Next": "PrepareTransformationInputFromExtractor"
+    },
+    "PrepareTransformationInputFromExtractor": {
+      "Type": "Pass",
+      "Parameters": {
+        "transformation_input.$": "$.data_extractor.output"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "RunTransformation"
+    },
+    "PrepareTransformationInputManual": {
+      "Type": "Pass",
+      "InputPath": "$.run_id",
+      "ResultPath": "$.manualInputs.run_id",
+      "Next": "SetTransformationInput"
+    },
+    "SetTransformationInput": {
+      "Type": "Pass",
+      "Parameters": {
+        "transformation_input.$": "$.manualInputs"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "RunTransformation"
+    },
+    "RunTransformation": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${transformation_arn}",
+        "Input.$": "$.prepared.transformation_input"
+      },
+      "TimeoutSeconds": 3600,
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.transformation",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyOrchestratorFailure"
+        }
+      ],
+      "Next": "PrepareRedshiftInputFromTransformation"
+    },
+    "PrepareRedshiftInputFromTransformation": {
+      "Type": "Pass",
+      "Parameters": {
+        "redshift_input.$": "$.transformation.output"
+      },
+      "ResultPath": "$.prepared",
+      "Next": "RunRedshiftLoad"
+    },
+    "RunRedshiftLoad": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${redshift_load_arn}",
+        "Input.$": "$.prepared.redshift_input"
+      },
+      "TimeoutSeconds": 1800,
+      "ResultSelector": {
+        "output.$": "$.Output"
+      },
+      "ResultPath": "$.redshift_load",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyOrchestratorFailure"
+        }
+      ],
+      "Next": "OrchestratorSuccess"
+    },
+    "OrchestratorSuccess": {
+      "Type": "Succeed"
+    },
+    "NotifyOrchestratorFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${sns_topic_arn}",
+        "Subject": "Data Horizon Pipeline Failed",
+        "Message.$": "States.Format('Pipeline failed at step: {}', $.error.Cause)"
+      },
+      "Next": "OrchestratorFailed"
+    },
+    "OrchestratorFailed": {
+      "Type": "Fail",
+      "Error": "OrchestratorFailed",
+      "Cause": "One of the child step functions failed"
+    }
+  }
+}

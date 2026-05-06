@@ -26,7 +26,7 @@ data "aws_iam_policy_document" "orchestrator" {
     ]
   }
 
-  # DynamoDB: read and write run metadata
+  # DynamoDB: read and write run metadata and tag records
   statement {
     effect = "Allow"
     actions = [
@@ -34,15 +34,18 @@ data "aws_iam_policy_document" "orchestrator" {
       "dynamodb:UpdateItem",
       "dynamodb:GetItem",
       "dynamodb:Query",
+      "dynamodb:BatchWriteItem",
     ]
     resources = [var.dynamodb_table_arn]
   }
 
-  # Secrets Manager: read pipeline config
+  # SSM Parameter Store: read pipeline config at cold start
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.secret_arn]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter${var.ssm_parameter_path_prefix}/*",
+    ]
   }
 }
 
@@ -77,11 +80,13 @@ data "aws_iam_policy_document" "map_processor" {
     resources = [var.extraction_failures_queue_arn]
   }
 
-  # Secrets Manager: read pipeline config
+  # SSM Parameter Store: read pipeline config at cold start
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.secret_arn]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter${var.ssm_parameter_path_prefix}/*",
+    ]
   }
 }
 
@@ -106,12 +111,26 @@ data "aws_iam_policy_document" "glue" {
   }
 
   statement {
-    effect  = "Allow"
-    actions = ["s3:PutObject"]
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
     resources = [
       "${var.s3_cleaned_bucket_arn}/*",
       "${var.s3_validated_bucket_arn}/*",
       "${var.s3_bad_bucket_arn}/*",
+    ]
+  }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [
+      var.s3_cleaned_bucket_arn,
+      var.s3_validated_bucket_arn,
+      var.s3_bad_bucket_arn,
     ]
   }
 
@@ -128,11 +147,25 @@ data "aws_iam_policy_document" "glue" {
     resources = ["*"]
   }
 
-  # Secrets Manager: read pipeline config
+  # SSM Parameter Store: read pipeline config at job start
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.secret_arn]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter${var.ssm_parameter_path_prefix}/*",
+    ]
+  }
+
+  # DynamoDB: read and write run metadata and tag records
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:UpdateItem",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:Query",
+    ]
+    resources = [var.dynamodb_table_arn]
   }
 }
 
@@ -169,6 +202,19 @@ data "aws_iam_policy_document" "step_functions" {
     resources = ["arn:aws:events:*:*:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"]
   }
 
+  # S3: read map input JSON for distributed Map State ItemReader
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:ListBucket",
+    ]
+    resources = [
+      var.s3_orchestration_bucket_arn,
+      "${var.s3_orchestration_bucket_arn}/*",
+    ]
+  }
+
   # Invoke Lambdas
   statement {
     effect    = "Allow"
@@ -192,6 +238,7 @@ data "aws_iam_policy_document" "step_functions" {
   statement {
     effect = "Allow"
     actions = [
+      "redshift-data:BatchExecuteStatement",
       "redshift-data:ExecuteStatement",
       "redshift-data:DescribeStatement",
       "redshift-data:GetStatementResult",
@@ -206,6 +253,20 @@ data "aws_iam_policy_document" "step_functions" {
     resources = ["*"]
   }
 
+  # DynamoDB: write stage timing to META item via SDK integration
+  statement {
+    effect    = "Allow"
+    actions   = ["dynamodb:UpdateItem"]
+    resources = [var.dynamodb_table_arn]
+  }
+
+  # SQS: send failed items to extraction failures queue
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.extraction_failures_queue_arn]
+  }
+
   # SNS: publish failure notifications
   statement {
     effect    = "Allow"
@@ -213,7 +274,7 @@ data "aws_iam_policy_document" "step_functions" {
     resources = [var.sns_topic_arn]
   }
 
-  # CloudWatch Logs
+  # CloudWatch Logs — delivery management
   statement {
     effect = "Allow"
     actions = [

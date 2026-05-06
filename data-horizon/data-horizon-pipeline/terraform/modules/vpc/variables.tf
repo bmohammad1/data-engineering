@@ -9,7 +9,17 @@ variable "vpc_cidr" {
 }
 
 variable "private_subnet_cidr" {
-  description = "CIDR block for the private subnet"
+  description = "CIDR block for the first private subnet"
+  type        = string
+}
+
+variable "private_subnet_cidr_2" {
+  description = "CIDR block for the second private subnet (different AZ, required by Redshift subnet group)"
+  type        = string
+}
+
+variable "aws_region" {
+  description = "AWS region (used to construct the S3 VPC endpoint service name)"
   type        = string
 }
 

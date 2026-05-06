@@ -8,8 +8,8 @@ variable "step_functions_role_arn" {
   type        = string
 }
 
-variable "orchestrator_lambda_arn" {
-  description = "Orchestrator Lambda function ARN"
+variable "config_loader_lambda_arn" {
+  description = "Config Loader Lambda function ARN"
   type        = string
 }
 
@@ -61,6 +61,21 @@ variable "sns_topic_arn" {
 variable "map_state_concurrency" {
   description = "Max concurrency for Step Functions Map State"
   type        = number
+}
+
+variable "orchestration_bucket_name" {
+  description = "S3 orchestration bucket name (holds map state input JSON files)"
+  type        = string
+}
+
+variable "extraction_failures_queue_url" {
+  description = "SQS URL for extraction failures dead-letter queue"
+  type        = string
+}
+
+variable "pipeline_state_table" {
+  description = "DynamoDB table name for pipeline state"
+  type        = string
 }
 
 variable "statemachine_dir" {

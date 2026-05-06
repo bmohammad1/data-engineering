@@ -13,9 +13,45 @@ variable "scripts_bucket_name" {
   type        = string
 }
 
-variable "secret_name" {
-  description = "Secrets Manager secret name for runtime config"
+variable "environment" {
+  description = "Deployment environment (dev, staging, prod)"
   type        = string
+}
+
+variable "transform_workers" {
+  description = "Number of workers for the transform Glue job"
+  type        = number
+  default     = 2
+}
+
+variable "transform_worker_type" {
+  description = "Worker type for the transform Glue job (G.1X, G.2X, G.4X, G.8X)"
+  type        = string
+  default     = "G.1X"
+}
+
+variable "transform_timeout" {
+  description = "Timeout in minutes for the transform Glue job"
+  type        = number
+  default     = 60
+}
+
+variable "validation_workers" {
+  description = "Number of workers for the validation Glue job"
+  type        = number
+  default     = 2
+}
+
+variable "validation_worker_type" {
+  description = "Worker type for the validation Glue job (G.1X, G.2X, G.4X, G.8X)"
+  type        = string
+  default     = "G.1X"
+}
+
+variable "validation_timeout" {
+  description = "Timeout in minutes for the validation Glue job"
+  type        = number
+  default     = 60
 }
 
 variable "tags" {

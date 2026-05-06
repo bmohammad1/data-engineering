@@ -29,9 +29,9 @@ variable "master_password" {
   sensitive   = true
 }
 
-variable "subnet_id" {
-  description = "Private subnet ID for the Redshift cluster"
-  type        = string
+variable "subnet_ids" {
+  description = "Private subnet IDs for the Redshift subnet group (must span at least 2 AZs)"
+  type        = list(string)
 }
 
 variable "security_group_id" {
