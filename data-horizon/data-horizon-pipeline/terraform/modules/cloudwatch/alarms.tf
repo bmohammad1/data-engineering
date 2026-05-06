@@ -213,21 +213,6 @@ resource "aws_cloudwatch_metric_alarm" "tags_failed_per_run_high" {
   tags = var.tags
 }
 
-resource "aws_cloudwatch_metric_alarm" "pipeline_run_duration_high" {
-  alarm_name          = "${var.name_prefix}-pipeline-run-duration-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "PipelineRunDurationMinutes"
-  namespace           = "DataHorizon/Pipeline"
-  period              = 3600
-  statistic           = "Maximum"
-  threshold           = 300
-  alarm_description   = "Pipeline run exceeded 300 minutes — next EventBridge trigger will fire before this run completes, causing DynamoDB conflicts"
-  alarm_actions       = [var.sns_topic_arn]
-  treat_missing_data  = "notBreaching"
-
-  tags = var.tags
-}
 
 # =============================================================================
 # SQS Dead Letter Queue

@@ -41,7 +41,7 @@ def write_run_metadata(
         "run_id":        {"S": run_id},
         "pipeline_name": {"S": PIPELINE_NAME},
         "environment":   {"S": environment},
-        "status":        {"S": STATUS_RUNNING},
+        "overall_status": {"S": STATUS_RUNNING},
         "start_time":    {"S": now_iso},
         "trigger_type":  {"S": "schedule"},
         "total_tags":    {"N": str(total_tags)},

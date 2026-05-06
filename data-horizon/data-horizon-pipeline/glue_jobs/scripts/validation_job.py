@@ -54,6 +54,7 @@ except ImportError:
         update_run_validate_status,
     )
 
+from shared.aws_clients import put_pipeline_metric
 from shared.constants import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCESS, load_ssm_config
 from shared.logger import configure_logging, run_id_ctx
 
@@ -253,6 +254,23 @@ def main() -> None:
             "tags_failed": tags_failed,
             "total_duration_ms": total_duration_ms,
         },
+    )
+
+    total_processed = total_valid + total_quarantined
+    if total_processed > 0:
+        put_pipeline_metric(
+            "ValidationRejectionRate",
+            (total_quarantined / total_processed) * 100,
+            "Percent",
+            "DataHorizon/Validation",
+            run_id,
+        )
+    put_pipeline_metric(
+        "TagsFailedPerRun",
+        tags_failed,
+        "Count",
+        "DataHorizon/Validation",
+        run_id,
     )
 
     all_records_failed_validation = total_valid == 0

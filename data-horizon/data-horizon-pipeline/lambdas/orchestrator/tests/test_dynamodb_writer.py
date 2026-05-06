@@ -24,7 +24,7 @@ class TestWriteRunMetadata:
 
         assert item["run_id"]["S"] == "RUN-TEST001"
         assert item["total_tags"]["N"] == "100"
-        assert item["status"]["S"] == STATUS_RUNNING
+        assert item["overall_status"]["S"] == STATUS_RUNNING
         assert item["pipeline_name"]["S"] == "data_horizon"
         assert item["environment"]["S"] == "test"
         assert item["trigger_type"]["S"] == "schedule"

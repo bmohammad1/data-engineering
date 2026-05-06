@@ -272,6 +272,31 @@
       "Next": "RedshiftLoadFailed"
     },
     "RedshiftLoadFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${pipeline_state_table}",
+        "Key": {
+          "PK": { "S.$": "States.Format('RUN#{}', $.run_id)" },
+          "SK": { "S": "META" }
+        },
+        "UpdateExpression": "SET load_status = :status, overall_status = :status",
+        "ExpressionAttributeValues": {
+          ":status": { "S": "FAILED" }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "LoadFailed"
+    },
+    "LoadFailed": {
       "Type": "Fail",
       "Error": "RedshiftLoadFailed",
       "Cause": "One or more table loads failed — see load_table_results in DynamoDB META for re-run list"

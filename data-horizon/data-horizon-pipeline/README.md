@@ -292,7 +292,8 @@ terraform apply -var-file=environments/dev/terraform.tfvars
 ### 3. Deploy the full pipeline
 
 ```bash
-bash scripts/deploy.sh dev
+bash scripts/deploy.sh dev build
+bash scripts/deploy.sh dev upload
 ```
 
 This script packages the Lambda functions, uploads Glue job scripts to S3, and applies Terraform in one step.
