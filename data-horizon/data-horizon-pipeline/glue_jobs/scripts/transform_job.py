@@ -85,6 +85,9 @@ def _extract_corrupt_tag_ids(raw_dataframe) -> set[str]:
     columnNameOfCorruptRecord set to _CORRUPT_RECORD_COL so that unparseable
     rows carry a non-null value in that column.
     """
+    if _CORRUPT_RECORD_COL not in raw_dataframe.columns:
+        return set()
+
     corrupt_file_rows = (
         raw_dataframe
         .filter(F.col(_CORRUPT_RECORD_COL).isNotNull())

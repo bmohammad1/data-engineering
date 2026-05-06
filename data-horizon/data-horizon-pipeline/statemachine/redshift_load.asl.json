@@ -65,7 +65,7 @@
         "s3_key.$": "$$.Map.Item.Value.s3_key",
         "redshift_table.$": "$$.Map.Item.Value.redshift_table"
       },
-      "MaxConcurrency": 1,
+      "MaxConcurrency": 5,
       "ToleratedFailureCount": 13,
       "Iterator": {
         "StartAt": "BuildSqls",
