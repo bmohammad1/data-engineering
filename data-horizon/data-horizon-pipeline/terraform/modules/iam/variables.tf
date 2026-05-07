@@ -44,8 +44,9 @@ variable "s3_config_bucket_arn" {
 }
 
 variable "dynamodb_table_arn" {
-  description = "DynamoDB pipeline state table ARN"
+  description = "DynamoDB pipeline state table ARN — set to null when using RDS PostgreSQL"
   type        = string
+  default     = null
 }
 
 variable "extraction_failures_queue_arn" {

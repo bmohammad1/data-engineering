@@ -9,6 +9,7 @@ module "vpc" {
   name_prefix           = local.name_prefix
   aws_region            = var.aws_region
   vpc_cidr              = var.vpc_cidr
+  public_subnet_cidr    = var.public_subnet_cidr
   private_subnet_cidr   = var.private_subnet_cidr
   private_subnet_cidr_2 = var.private_subnet_cidr_2
   tags                  = local.common_tags
@@ -22,12 +23,28 @@ module "s3" {
   tags        = local.common_tags
 }
 
-# --- DynamoDB ---
-module "dynamodb" {
-  source = "./modules/dynamodb"
+# --- DynamoDB (commented out — replaced by RDS PostgreSQL) ---
+# module "dynamodb" {
+#   source = "./modules/dynamodb"
+#
+#   name_prefix = local.name_prefix
+#   tags        = local.common_tags
+# }
 
-  name_prefix = local.name_prefix
-  tags        = local.common_tags
+# --- RDS PostgreSQL (pipeline_audit schema) ---
+module "rds" {
+  source = "./modules/rds"
+
+  name_prefix    = local.name_prefix
+  environment    = var.environment
+  vpc_id         = module.vpc.vpc_id
+  vpc_cidr       = var.vpc_cidr
+  subnet_ids     = module.vpc.subnet_ids
+  instance_class = var.rds_instance_class
+  db_password    = var.rds_db_password
+  multi_az       = var.rds_multi_az
+  skip_final_snapshot = var.rds_skip_final_snapshot
+  tags           = local.common_tags
 }
 
 # --- SQS (eventbridge-failures + extraction-failures) ---
@@ -71,7 +88,7 @@ module "ssm_parameters" {
   source_api_token         = var.source_api_token
   redshift_master_password = var.redshift_master_password
 
-  pipeline_state_table      = module.dynamodb.table_name
+  pipeline_state_table      = module.rds.pg_connection_string_ssm_name
   source_api_base_url       = var.source_api_base_url
   config_bucket_name        = module.s3.config_bucket_name
   orchestration_bucket_name = module.s3.orchestration_bucket_name
@@ -100,7 +117,7 @@ module "iam" {
   s3_orchestration_bucket_arn = module.s3.orchestration_bucket_arn
   s3_config_bucket_arn        = module.s3.config_bucket_arn
 
-  dynamodb_table_arn = module.dynamodb.table_arn
+  # dynamodb_table_arn = module.dynamodb.table_arn  # commented out — DynamoDB replaced by RDS
 
   extraction_failures_queue_arn  = module.sqs.extraction_failures_queue_arn
   eventbridge_failures_queue_arn = module.sqs.eventbridge_failures_queue_arn
@@ -114,14 +131,16 @@ module "iam" {
 module "lambda" {
   source = "./modules/lambda"
 
-  name_prefix            = local.name_prefix
-  environment            = var.environment
-  config_loader_role_arn = module.iam.lambda_config_loader_role_arn
-  map_processor_role_arn = module.iam.lambda_map_processor_role_arn
-  config_loader_memory   = var.config_loader_memory
-  config_loader_timeout  = var.config_loader_timeout
-  map_processor_memory   = var.map_processor_memory
-  map_processor_timeout  = var.map_processor_timeout
+  name_prefix              = local.name_prefix
+  environment              = var.environment
+  config_loader_role_arn   = module.iam.lambda_config_loader_role_arn
+  map_processor_role_arn   = module.iam.lambda_map_processor_role_arn
+  config_loader_memory     = var.config_loader_memory
+  config_loader_timeout    = var.config_loader_timeout
+  map_processor_memory     = var.map_processor_memory
+  map_processor_timeout    = var.map_processor_timeout
+  subnet_ids               = module.vpc.subnet_ids
+  lambda_security_group_id = module.vpc.lambda_security_group_id
 
   tags = local.common_tags
 }
@@ -175,7 +194,7 @@ module "step_function" {
   map_state_concurrency         = var.map_state_concurrency
   orchestration_bucket_name     = module.s3.orchestration_bucket_name
   extraction_failures_queue_url = module.sqs.extraction_failures_queue_url
-  pipeline_state_table          = module.dynamodb.table_name
+  pipeline_state_table          = module.rds.pg_connection_string_ssm_name
   statemachine_dir              = "${path.module}/../statemachine"
   tags                          = local.common_tags
 }
@@ -205,7 +224,7 @@ module "cloudwatch" {
   parent_state_machine_arn          = module.step_function.parent_state_machine_arn
   extraction_failures_queue_name    = "${local.name_prefix}-extraction-failures"
   sns_topic_arn                     = module.sns.topic_arn
-  dynamodb_table_name               = module.dynamodb.table_name
+  # dynamodb_table_name             = module.dynamodb.table_name  # commented out — replaced by RDS
   config_loader_timeout_ms          = var.config_loader_timeout * 1000
   map_processor_timeout_ms          = var.map_processor_timeout * 1000
   tags                              = local.common_tags

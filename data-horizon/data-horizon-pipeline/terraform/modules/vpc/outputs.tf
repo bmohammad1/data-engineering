@@ -13,6 +13,11 @@ output "subnet_ids" {
   value       = [aws_subnet.private.id, aws_subnet.private_2.id]
 }
 
+output "lambda_security_group_id" {
+  description = "Security group ID for Lambda functions in VPC"
+  value       = aws_security_group.lambda.id
+}
+
 output "redshift_security_group_id" {
   description = "Security group ID for Redshift cluster"
   value       = aws_security_group.redshift.id

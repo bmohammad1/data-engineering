@@ -18,6 +18,11 @@ resource "aws_lambda_function" "config_loader" {
   timeout          = var.config_loader_timeout
   architectures    = ["x86_64"]
 
+  vpc_config {
+    subnet_ids         = var.subnet_ids
+    security_group_ids = [var.lambda_security_group_id]
+  }
+
   environment {
     variables = {
       ENVIRONMENT = var.environment
@@ -50,6 +55,11 @@ resource "aws_lambda_function" "map_state_processor" {
   memory_size      = var.map_processor_memory
   timeout          = var.map_processor_timeout
   architectures    = ["x86_64"]
+
+  vpc_config {
+    subnet_ids         = var.subnet_ids
+    security_group_ids = [var.lambda_security_group_id]
+  }
 
   environment {
     variables = {

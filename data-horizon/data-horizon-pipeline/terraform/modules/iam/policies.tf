@@ -26,18 +26,21 @@ data "aws_iam_policy_document" "orchestrator" {
     ]
   }
 
-  # DynamoDB: read and write run metadata and tag records
-  statement {
-    effect = "Allow"
-    actions = [
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:GetItem",
-      "dynamodb:Query",
-      "dynamodb:BatchWriteItem",
-    ]
-    resources = [var.dynamodb_table_arn]
-  }
+  # DynamoDB: read and write run metadata and tag records (commented out — replaced by RDS)
+  # dynamic "statement" {
+  #   for_each = var.dynamodb_table_arn != null ? [1] : []
+  #   content {
+  #     effect = "Allow"
+  #     actions = [
+  #       "dynamodb:PutItem",
+  #       "dynamodb:UpdateItem",
+  #       "dynamodb:GetItem",
+  #       "dynamodb:Query",
+  #       "dynamodb:BatchWriteItem",
+  #     ]
+  #     resources = [var.dynamodb_table_arn]
+  #   }
+  # }
 
   # SSM Parameter Store: read pipeline config at cold start
   statement {
@@ -61,17 +64,20 @@ data "aws_iam_policy_document" "map_processor" {
     resources = ["${var.s3_raw_bucket_arn}/*"]
   }
 
-  # DynamoDB: read and write item status
-  statement {
-    effect = "Allow"
-    actions = [
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:GetItem",
-      "dynamodb:Query",
-    ]
-    resources = [var.dynamodb_table_arn]
-  }
+  # DynamoDB: read and write item status (commented out — replaced by RDS)
+  # dynamic "statement" {
+  #   for_each = var.dynamodb_table_arn != null ? [1] : []
+  #   content {
+  #     effect = "Allow"
+  #     actions = [
+  #       "dynamodb:PutItem",
+  #       "dynamodb:UpdateItem",
+  #       "dynamodb:GetItem",
+  #       "dynamodb:Query",
+  #     ]
+  #     resources = [var.dynamodb_table_arn]
+  #   }
+  # }
 
   # SQS: send to extraction failures queue
   statement {
@@ -156,17 +162,20 @@ data "aws_iam_policy_document" "glue" {
     ]
   }
 
-  # DynamoDB: read and write run metadata and tag records
-  statement {
-    effect = "Allow"
-    actions = [
-      "dynamodb:UpdateItem",
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:Query",
-    ]
-    resources = [var.dynamodb_table_arn]
-  }
+  # DynamoDB: read and write run metadata and tag records (commented out — replaced by RDS)
+  # dynamic "statement" {
+  #   for_each = var.dynamodb_table_arn != null ? [1] : []
+  #   content {
+  #     effect = "Allow"
+  #     actions = [
+  #       "dynamodb:UpdateItem",
+  #       "dynamodb:GetItem",
+  #       "dynamodb:PutItem",
+  #       "dynamodb:Query",
+  #     ]
+  #     resources = [var.dynamodb_table_arn]
+  #   }
+  # }
 }
 
 # =============================================================================
@@ -253,12 +262,15 @@ data "aws_iam_policy_document" "step_functions" {
     resources = ["*"]
   }
 
-  # DynamoDB: write stage timing to META item via SDK integration
-  statement {
-    effect    = "Allow"
-    actions   = ["dynamodb:UpdateItem"]
-    resources = [var.dynamodb_table_arn]
-  }
+  # DynamoDB: write stage timing to META item via SDK integration (commented out — replaced by RDS)
+  # dynamic "statement" {
+  #   for_each = var.dynamodb_table_arn != null ? [1] : []
+  #   content {
+  #     effect    = "Allow"
+  #     actions   = ["dynamodb:UpdateItem"]
+  #     resources = [var.dynamodb_table_arn]
+  #   }
+  # }
 
   # SQS: send failed items to extraction failures queue
   statement {

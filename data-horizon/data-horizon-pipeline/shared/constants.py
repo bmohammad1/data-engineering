@@ -23,6 +23,11 @@ SK_TAG_PREFIX = "TAG#"
 # GSI key prefix
 GSI1PK_PIPELINE_PREFIX = "PIPELINE#"
 
+# PostgreSQL schema and table identifiers
+PG_SCHEMA = "pipeline_audit"
+PG_RUNS_TABLE = f"{PG_SCHEMA}.pipeline_runs"
+PG_TAGS_TABLE = f"{PG_SCHEMA}.pipeline_tags"
+
 STATUS_RUNNING = "RUNNING"
 STATUS_PENDING = "PENDING"
 STATUS_SUCCESS = "SUCCESS"

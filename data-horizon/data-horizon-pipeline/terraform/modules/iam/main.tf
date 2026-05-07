@@ -19,7 +19,7 @@ resource "aws_iam_role" "lambda_config_loader" {
 
 resource "aws_iam_role_policy_attachment" "config_loader_basic" {
   role       = aws_iam_role.lambda_config_loader.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
 resource "aws_iam_role_policy" "config_loader_custom" {
@@ -49,7 +49,7 @@ resource "aws_iam_role" "lambda_map_processor" {
 
 resource "aws_iam_role_policy_attachment" "map_processor_basic" {
   role       = aws_iam_role.lambda_map_processor.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
 resource "aws_iam_role_policy" "map_processor_custom" {

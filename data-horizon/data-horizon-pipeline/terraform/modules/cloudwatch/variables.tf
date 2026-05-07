@@ -46,8 +46,9 @@ variable "sns_topic_arn" {
 }
 
 variable "dynamodb_table_name" {
-  description = "Pipeline state DynamoDB table name"
+  description = "Pipeline state DynamoDB table name — set to null when using RDS PostgreSQL"
   type        = string
+  default     = null
 }
 
 variable "config_loader_timeout_ms" {

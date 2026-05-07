@@ -39,5 +39,9 @@ class DynamoDBError(RetryableError):
     """Raised when a DynamoDB operation fails."""
 
 
+class PostgresError(RetryableError):
+    """Raised when a PostgreSQL operation fails."""
+
+
 class TagFileError(PermanentError):
     """Raised when the tags CSV file is missing or malformed."""

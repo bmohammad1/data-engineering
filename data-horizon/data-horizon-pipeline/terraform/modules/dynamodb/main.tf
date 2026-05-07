@@ -1,3 +1,10 @@
+/*
+  DynamoDB PipelineAudit table — PRESERVED FOR ROLLBACK REFERENCE
+  Replaced by Amazon RDS PostgreSQL tables in the pipeline_audit schema.
+  To re-enable: remove this block comment, delete the rds module from
+  terraform/main.tf, and revert the commented-out DynamoDB code in the
+  Python source files.
+
 resource "aws_dynamodb_table" "pipeline_state" {
   name         = "PipelineAudit"
   billing_mode = "PAY_PER_REQUEST"
@@ -35,3 +42,4 @@ resource "aws_dynamodb_table" "pipeline_state" {
     Name = "PipelineAudit"
   })
 }
+*/

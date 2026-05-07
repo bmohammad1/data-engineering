@@ -134,6 +134,12 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "public_subnet_cidr" {
+  description = "CIDR block for the public subnet (hosts the NAT Gateway)"
+  type        = string
+  default     = "10.0.0.0/24"
+}
+
 variable "private_subnet_cidr" {
   description = "CIDR block for the first private subnet"
   type        = string
@@ -149,4 +155,28 @@ variable "sechedule_expression_for_eventbridge" {
   description ="Schedule hours in event bridge"
   type        = string
   default     = "rate(6 hours)"
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class for the pipeline_audit PostgreSQL database"
+  type        = string
+  default     = "db.t3.medium"
+}
+
+variable "rds_db_password" {
+  description = "Master password for the RDS pipeline_audit instance"
+  type        = string
+  sensitive   = true
+}
+
+variable "rds_multi_az" {
+  description = "Enable Multi-AZ for RDS (true for prod, false for dev/staging)"
+  type        = bool
+  default     = false
+}
+
+variable "rds_skip_final_snapshot" {
+  description = "Skip final snapshot on RDS destroy (true for dev/test, false for prod)"
+  type        = bool
+  default     = false
 }

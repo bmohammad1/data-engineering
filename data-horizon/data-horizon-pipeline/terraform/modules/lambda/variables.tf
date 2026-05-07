@@ -42,6 +42,16 @@ variable "map_processor_timeout" {
   default     = 60
 }
 
+variable "subnet_ids" {
+  description = "Private subnet IDs for Lambda VPC placement"
+  type        = list(string)
+}
+
+variable "lambda_security_group_id" {
+  description = "Security group ID for Lambda functions in VPC"
+  type        = string
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

@@ -25,12 +25,23 @@ output "s3_scripts_bucket_name" {
   value       = module.s3.scripts_bucket_name
 }
 
-# --- DynamoDB ---
+# --- RDS PostgreSQL ---
 
-output "dynamodb_table_name" {
-  description = "DynamoDB pipeline state table name"
-  value       = module.dynamodb.table_name
+output "rds_endpoint" {
+  description = "RDS PostgreSQL endpoint for the pipeline_audit database"
+  value       = module.rds.endpoint
 }
+
+output "rds_pg_connection_string_ssm_name" {
+  description = "SSM parameter name storing the Postgres connection string"
+  value       = module.rds.pg_connection_string_ssm_name
+}
+
+# --- DynamoDB (commented out — replaced by RDS PostgreSQL) ---
+# output "dynamodb_table_name" {
+#   description = "DynamoDB pipeline state table name"
+#   value       = module.dynamodb.table_name
+# }
 
 # --- Step Functions ---
 
