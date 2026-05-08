@@ -27,14 +27,29 @@ output "s3_scripts_bucket_name" {
 
 # --- RDS PostgreSQL ---
 
-output "rds_endpoint" {
-  description = "RDS PostgreSQL endpoint for the pipeline_audit database"
-  value       = module.rds.endpoint
+output "rds_instance_endpoint" {
+  description = "RDS PostgreSQL instance endpoint for the pipeline_audit database"
+  value       = module.rds.instance_endpoint
+}
+
+output "rds_instance_address" {
+  description = "RDS PostgreSQL instance hostname"
+  value       = module.rds.instance_address
+}
+
+output "rds_instance_arn" {
+  description = "RDS PostgreSQL instance ARN"
+  value       = module.rds.instance_arn
 }
 
 output "rds_pg_connection_string_ssm_name" {
   description = "SSM parameter name storing the Postgres connection string"
   value       = module.rds.pg_connection_string_ssm_name
+}
+
+output "rds_instance_arn_ssm_name" {
+  description = "SSM parameter name storing the RDS instance ARN"
+  value       = module.rds.rds_instance_arn_ssm_name
 }
 
 # --- DynamoDB (commented out — replaced by RDS PostgreSQL) ---

@@ -9,30 +9,24 @@ variable "environment" {
 }
 
 variable "vpc_id" {
-  description = "VPC ID where the RDS instance is placed"
+  description = "VPC ID where the Aurora cluster is placed"
   type        = string
 }
 
 variable "vpc_cidr" {
-  description = "VPC CIDR block — used for the RDS security group ingress rule"
+  description = "VPC CIDR block — used for the Aurora security group ingress rule"
   type        = string
 }
 
 variable "subnet_ids" {
-  description = "Private subnet IDs for the RDS subnet group (minimum two, different AZs)"
+  description = "Private subnet IDs for the Aurora subnet group (minimum two, different AZs)"
   type        = list(string)
 }
 
 variable "instance_class" {
-  description = "RDS instance class"
+  description = "Aurora instance class (e.g., db.t4g.medium)"
   type        = string
-  default     = "db.t3.medium"
-}
-
-variable "allocated_storage" {
-  description = "Initial allocated storage in GB"
-  type        = number
-  default     = 20
+  default     = "db.t4g.medium"
 }
 
 variable "db_name" {
@@ -42,7 +36,7 @@ variable "db_name" {
 }
 
 variable "db_username" {
-  description = "Master username for the RDS instance"
+  description = "Master username for the Aurora cluster"
   type        = string
   default     = "pipeline_admin"
 }
@@ -60,7 +54,7 @@ variable "multi_az" {
 }
 
 variable "deletion_protection" {
-  description = "Prevent accidental deletion of the RDS instance"
+  description = "Prevent accidental deletion of the Aurora cluster"
   type        = bool
   default     = true
 }
@@ -68,7 +62,7 @@ variable "deletion_protection" {
 variable "skip_final_snapshot" {
   description = "Skip final snapshot on destroy (set true for dev/test)"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tags" {

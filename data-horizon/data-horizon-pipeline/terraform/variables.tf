@@ -160,7 +160,7 @@ variable "sechedule_expression_for_eventbridge" {
 variable "rds_instance_class" {
   description = "RDS instance class for the pipeline_audit PostgreSQL database"
   type        = string
-  default     = "db.t3.medium"
+  default     = "db.t4g.medium"
 }
 
 variable "rds_db_password" {
@@ -178,5 +178,5 @@ variable "rds_multi_az" {
 variable "rds_skip_final_snapshot" {
   description = "Skip final snapshot on RDS destroy (true for dev/test, false for prod)"
   type        = bool
-  default     = false
+  default     = true
 }
