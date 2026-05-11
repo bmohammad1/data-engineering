@@ -1,6 +1,6 @@
 # Data Horizon Pipeline
 
-An end-to-end industrial IoT data pipeline built on AWS. Every 6 hours, the pipeline ingests tag telemetry from a source API, transforms and validates the data with PySpark, and loads the results into Redshift for analytics — fully orchestrated by Step Functions, fully reproducible with Terraform.
+An end-to-end industrial data pipeline built on AWS. Every 6 hours, the pipeline ingests tag data from a source API, transforms and validates the data with PySpark, and loads the results into Redshift for analytics — fully orchestrated by Step Functions, fully reproducible with Terraform.
 
 ---
 
@@ -19,7 +19,7 @@ EventBridge (every 6 hours)
 │  └── Lambda: generate Map State input → S3          │
 │        │                                            │
 │  Child2: Data Extraction                            │
-│  └── Map State (up to 10 concurrent)                │
+│  └── Map State (up to 10 concurrent-configurable)                │
 │      └── Lambda × N: fetch tag data from source API │
 │          ├── raw JSON → S3 (raw bucket)             │
 │          └── status → DynamoDB                      │
@@ -49,7 +49,7 @@ EventBridge (every 6 hours)
 
 **Single-table DynamoDB design.** One `PipelineAudit` table tracks all run metadata and tag records using prefix-based partition keys (`RUN#`, `TAG#`) with a GSI (`PIPELINE#`) for pipeline-wide queries.
 
-**Child2 tolerates partial failure.** The map state allows 50% item failure without failing the child state machine. Failed tag batches route to an SQS DLQ — the DLQ alarm is the only signal for partial extraction failures, since the child can succeed while individual tags failed.
+**Child2 tolerates partial failure.** The map state allows 50% item failure without failing the child state machine. Failed tag batches route to an SQS DLQ — the DLQ alarm is the signal for partial extraction failures, since the child can succeed while individual tags failed.
 
 ---
 
@@ -68,8 +68,8 @@ EventBridge (every 6 hours)
 | Messaging | Amazon SQS (2 DLQs), Amazon SNS (failure alerts) |
 | Schema registry | AWS Glue Data Catalog (13 domain tables) |
 | Config / secrets | AWS SSM Parameter Store |
-| Monitoring | Amazon CloudWatch — 20 metric alarms, structured JSON logs |
-| Infrastructure | Terraform — 15 modular components, 3 environments |
+| Monitoring | Amazon CloudWatch — alarms, structured JSON logs |
+| Infrastructure | Terraform — modular components, 3 environments |
 | Code quality | ruff (lint + format), mypy (type checking), pytest (unit + integration) |
 
 ---
@@ -94,7 +94,7 @@ data-horizon-pipeline/
 │   │   ├── config_loader.py
 │   │   ├── dynamodb_writer.py
 │   │   └── map_state_generator.py
-│   └── map_state_processor/         # Child2 Lambda — one invocation per tag batch
+│   └── map_state_processor/         # Child2 Lambda — one invocation per tag 
 │       ├── handler.py
 │       ├── api_client.py
 │       ├── response_processor.py
@@ -106,7 +106,7 @@ data-horizon-pipeline/
 │   ├── config_loader.asl.json        # Child1
 │   ├── data_extractor.asl.json       # Child2 — Map State fan-out
 │   ├── transformation.asl.json       # Child3 — Glue transform + validation in sequence
-│   └── redshift_load.asl.json        # Child4 — SDK integration, no Lambda wrapper
+│   └── redshift_load.asl.json        # Child4 — SDK integration
 │
 ├── shared/
 │   ├── aws_clients.py                # Cached boto3 factory + CloudWatch metric helper
@@ -115,29 +115,29 @@ data-horizon-pipeline/
 │   └── logger.py                     # Structured JSON logging, run_id ContextVar
 │
 ├── terraform/
-│   ├── main.tf                       # Module composition (all 15 modules wired here)
-│   ├── variables.tf                  # 18 input variables
+│   ├── main.tf                       # Module composition (all  modules wired here)
+│   ├── variables.tf                  # input variables
 │   ├── outputs.tf                    # ARNs, endpoints, bucket names
 │   ├── environments/
 │   │   ├── dev/                      # dev.tfvars + backend.hcl
 │   │   ├── staging/                  # staging.tfvars + backend.hcl
 │   │   └── prod/                     # prod.tfvars + backend.hcl
 │   └── modules/
-│       ├── vpc/                      # VPC + 2 private subnets for Redshift
+│       ├── vpc/                      # VPC + private subnets for Redshift
 │       ├── s3/                       # 7 buckets (raw, cleaned, validated, quarantine,
 │       │                             #   scripts, orchestration, config) + lifecycle rules
 │       ├── dynamodb/                 # PipelineAudit table + GSI
 │       ├── sqs/                      # extraction-failures + eventbridge-failures DLQs
 │       ├── sns/                      # pipeline-failure-alerts topic
-│       ├── iam/                      # 5 least-privilege roles (Lambda ×2, Glue,
+│       ├── iam/                      # least-privilege roles (Lambda ×2, Glue,
 │       │                             #   Step Functions, EventBridge)
 │       ├── lambda/                   # Config Loader + Map State Processor functions
 │       ├── glue/                     # Transform + Validation Glue job definitions
-│       ├── glue_catalog/             # Glue Data Catalog DB + 13 domain tables
+│       ├── glue_catalog/             # Glue Data Catalog DB + domain tables
 │       ├── step_function/            # Parent + 4 child state machines
 │       ├── redshift/                 # dc2.large cluster, subnet group, IAM role
 │       ├── eventbridge/              # 6-hour schedule rule + DLQ failure routing
-│       ├── cloudwatch/               # Log groups (30-day retention) + 20 alarms
+│       ├── cloudwatch/               # Log groups (30-day retention) +  alarms
 │       └── ssm_parameters/           # 10+ SecureString parameters under /data-horizon/{env}/
 │
 ├── redshift/
@@ -155,9 +155,6 @@ data-horizon-pipeline/
 │   ├── upload_glue_scripts.sh        # Sync glue_jobs/ to S3 scripts bucket
 │   ├── package_lambdas.sh            # Zip each Lambda with its dependencies
 │   └── seed_config.sh                # Seed source config to S3
-│
-└── tests/
-    └── fixtures/                     # Sample API responses, raw/cleaned data, mock configs
 ```
 
 ---
@@ -201,31 +198,17 @@ Each table is independently transformed, validated, and loaded into a correspond
 
 ## Monitoring
 
-Monitoring is implemented as 20 CloudWatch metric alarms wired to a single SNS topic.
-
-### Failure Propagation Model
-
-```
-Lambda error (after retries)
-    → Child SF Fail state
-        → Parent SF catches States.ALL
-            → SNS notification
-                → Parent ExecutionsFailed alarm fires
-```
-
-All unrecovered failures surface at `ExecutionsFailed` on the parent state machine. Component-level alarms only cover signals the SF layer cannot see.
+Monitoring is implemented as  CloudWatch metric alarms wired to a single SNS topic.
 
 ### Alarm Summary
 
 | Category | Alarms | Signal |
 |---|---|---|
-| Step Functions | `ExecutionsFailed`, `ExecutionsTimedOut`, `ExecutionThrottled` on parent; `ExecutionsFailed` on all 4 children | Canonical pipeline failure |
+| Step Functions | `ExecutionsTimedOut`, `ExecutionThrottled` on parent;| Canonical pipeline failure |
 | Lambda | `Throttles` > 5 in 5 min; `Duration` > 80% of timeout | Pre-failure — SF never sees throttled requests |
 | Glue | JVM heap > 80%; `numFailedTasks` > 0; `ValidationRejectionRate` > 15% | Internal Spark health — SF only sees pass/fail |
 | SQS DLQ | `ApproximateNumberOfMessagesVisible` > 0; `ApproximateAgeOfOldestMessage` > 6h | Only signal for partial extraction failures |
 | DynamoDB | `SystemErrors`, `UserErrors`, `ThrottledRequests` | DynamoDB errors do not always kill Lambda/Glue |
-
-Custom metrics (`RecordsValidated`, `RecordsRejected`, `TagsFailedPerRun`, `ValidationRejectionRate`, `PipelineRunDurationMinutes`) are emitted by Glue jobs via `shared/aws_clients.put_pipeline_metric()`.
 
 ### SNS Severity Tiers
 
@@ -239,7 +222,7 @@ Custom metrics (`RecordsValidated`, `RecordsRejected`, `TagsFailedPerRun`, `Vali
 
 ## Infrastructure
 
-All infrastructure is managed with Terraform. 16 modules decompose every AWS resource into a single-purpose component.
+All infrastructure is managed with Terraform.  modules decompose every AWS resource into a single-purpose component.
 
 ### Environments
 
@@ -265,7 +248,7 @@ All infrastructure is managed with Terraform. 16 modules decompose every AWS res
 
 ## Prerequisites
 
-- AWS CLI configured with valid credentials (`aws sts get-caller-identity`)
+- AWS CLI configured with valid credentials
 - Terraform >= 1.1.5
 - Python 3.12+
 - `uv` for running ruff, pytest, mypy
@@ -304,18 +287,12 @@ This script packages the Lambda functions, uploads Glue job scripts to S3, and a
 bash scripts/run_redshift_migrations.sh dev
 ```
 
-```
-
----
-
 ## Common Commands
 
 ```bash
 # Run all unit tests
 uv run pytest -x -q
 
-# Run with coverage
-uv run pytest --cov=lambdas --cov=glue_jobs --cov=shared --cov-report=term-missing
 
 # Lint and format
 uv run ruff check . --fix
