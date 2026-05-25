@@ -13,7 +13,7 @@
 #                               even if they already exist.
 #
 # This script is the single entry point. It runs, in order:
-#   1. Prereq check (aws, sam, python3, credentials)
+#   1. Prereq check (aws, python, credentials)
 #   2. Lambda zips built if missing or stale
 #   3. Glue utils.zip built if missing
 #   4. SSM SecureString params seeded if missing
@@ -58,13 +58,40 @@ check_tool() {
 }
 
 check_tool aws     "https://aws.amazon.com/cli/"
-check_tool sam     "https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html"
-check_tool python3 "https://www.python.org/downloads/"
 
-if ! command -v pip >/dev/null 2>&1 && ! command -v pip3 >/dev/null 2>&1; then
+# Resolve Python interpreter. On Windows, `python` may resolve to the Microsoft
+# Store stub which prints an install prompt instead of running — verify by
+# actually invoking --version.
+PYTHON=""
+for candidate in python3 python py; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" --version >/dev/null 2>&1; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+if [[ -z "$PYTHON" ]]; then
+  echo "  MISSING: working python (python3/python/py) — install from https://www.python.org/downloads/" >&2
+  echo "  (If 'python' opens the Microsoft Store on Windows, disable the App Execution Alias under Settings > Apps > Advanced app settings.)" >&2
+  missing=1
+else
+  echo "  OK: $PYTHON ($($PYTHON --version 2>&1))"
+fi
+
+# Resolve pip — prefer pip3, then pip, then `python -m pip`.
+PIP=""
+if command -v pip3 >/dev/null 2>&1; then
+  PIP="pip3"
+elif command -v pip >/dev/null 2>&1; then
+  PIP="pip"
+elif [[ -n "$PYTHON" ]] && "$PYTHON" -m pip --version >/dev/null 2>&1; then
+  PIP="$PYTHON -m pip"
+else
   echo "  MISSING: pip / pip3 — install Python with pip enabled" >&2
   missing=1
 fi
+[[ -n "$PIP" ]] && echo "  OK: $PIP"
+
+export PYTHON PIP
 
 if [[ $missing -ne 0 ]]; then
   echo "" >&2
@@ -79,8 +106,6 @@ fi
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo "  OK: AWS credentials (account $ACCOUNT_ID)"
 echo ""
-
-PIP="$(command -v pip3 || command -v pip)"
 
 # =============================================================================
 # 2. Build Lambda zips if missing or stale
@@ -128,7 +153,7 @@ build_lambda_if_needed() {
   mkdir -p "$pkg_dir"
 
   if [[ -f "$lambda_dir/requirements.txt" ]]; then
-    "$PIP" install --quiet --no-input -r "$lambda_dir/requirements.txt" -t "$pkg_dir"
+    $PIP install --quiet --no-input -r "$lambda_dir/requirements.txt" -t "$pkg_dir"
   fi
 
   # Copy lambda's own .py files
@@ -179,6 +204,12 @@ seed_secure_param() {
   local param_name="$1" env_var_name="$2" prompt_text="$3"
   local env_value="${!env_var_name:-}"
 
+  # Disable Git Bash / MSYS auto-conversion of args that start with '/' into
+  # Windows paths — otherwise SSM param names like /data-horizon/... get
+  # mangled to C:/Program Files/Git/data-horizon/... before reaching aws.exe.
+  local -x MSYS_NO_PATHCONV=1
+  local -x MSYS2_ARG_CONV_EXCL='*'
+
   # Check existence unless forced.
   if [[ "${FORCE_RESEED:-0}" != "1" ]]; then
     if aws ssm get-parameter --name "$param_name" --with-decryption --region "$REGION" >/dev/null 2>&1; then
@@ -207,8 +238,9 @@ seed_secure_param() {
   echo "  SEED: $param_name"
 }
 
-seed_secure_param "/data-horizon/$ENVIRONMENT/source-api-token"         SOURCE_API_TOKEN         "source API Cognito token"
-seed_secure_param "/data-horizon/$ENVIRONMENT/redshift-master-password" REDSHIFT_MASTER_PASSWORD "Redshift master password"
+seed_secure_param "/data-horizon/$ENVIRONMENT/source-api-token" SOURCE_API_TOKEN "source API Cognito token"
+# Redshift master password is now read directly from params/<env>.json
+# (key: RedshiftMasterPassword) and passed as a CFN parameter override.
 echo ""
 
 # =============================================================================

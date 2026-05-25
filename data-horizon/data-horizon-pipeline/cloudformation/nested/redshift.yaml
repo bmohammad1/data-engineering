@@ -18,10 +18,10 @@ Parameters:
   MasterUsername:
     Type: String
     Default: admin
-  MasterPasswordSsmName:
+  MasterUserPassword:
     Type: String
-    Description: SSM SecureString parameter name holding the Redshift master password.
-    Default: /data-horizon/dev/redshift-master-password
+    NoEcho: true
+    Description: Redshift master password (8-64 chars, must include upper, lower, and digit).
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
   SecurityGroupId:
@@ -76,7 +76,7 @@ Resources:
       ClusterType: !If [IsMultiNode, multi-node, single-node]
       DBName: !Ref DatabaseName
       MasterUsername: !Ref MasterUsername
-      MasterUserPassword: !Sub '{{resolve:ssm-secure:${MasterPasswordSsmName}:1}}'
+      MasterUserPassword: !Ref MasterUserPassword
       ClusterSubnetGroupName: !Ref RedshiftSubnetGroup
       VpcSecurityGroupIds: [!Ref SecurityGroupId]
       EnhancedVpcRouting: true

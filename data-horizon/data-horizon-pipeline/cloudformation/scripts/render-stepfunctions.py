@@ -97,6 +97,16 @@ PARAM_TO_SUBVAR = {
     "redshift_load_arn":               "RedshiftLoadStateMachineArn",
 }
 
+# These ASL vars resolve to sibling state-machine resources in this same
+# nested template — they are NOT external CFN parameters. The rendered
+# DefinitionSubstitutions block must !Ref the resource (not a parameter).
+INTERNAL_SUBVAR_TO_RESOURCE = {
+    "config_loader_arn":   "ConfigLoaderStateMachine",
+    "data_extractor_arn":  "DataExtractorStateMachine",
+    "transformation_arn":  "TransformationStateMachine",
+    "redshift_load_arn":   "RedshiftLoadStateMachine",
+}
+
 
 def all_sub_vars() -> set[str]:
     """All terraform var names that any ASL file references, used to declare CFN parameters."""
@@ -147,8 +157,12 @@ def render() -> str:
         "    Type: String",
     ]
 
-    # Declare CFN parameters for every substitution variable referenced anywhere.
+    # Declare CFN parameters for every external substitution variable.
+    # Internal vars (child state-machine ARNs) are NOT parameters — they
+    # resolve to resources in this same template.
     for tf_var in sorted(all_sub_vars()):
+        if tf_var in INTERNAL_SUBVAR_TO_RESOURCE:
+            continue
         cfn_param = PARAM_TO_SUBVAR[tf_var]
         lines.append(f"  {cfn_param}:")
         lines.append("    Type: String")
@@ -167,14 +181,28 @@ def render() -> str:
         json.loads(raw)
         rewritten = rewrite_asl_placeholders(raw, sm["sub_vars"])
 
-        # Build the Fn::Sub variable map for this state machine.
+        # Build the Fn::Sub variable map for this state machine. Internal
+        # vars reference sibling state-machine resources; external vars
+        # reference CFN parameters.
         var_map_lines: list[str] = []
         for tf_var in sm["sub_vars"]:
             cfn_param = PARAM_TO_SUBVAR[tf_var]
-            var_map_lines.append(f"            {cfn_param}: !Ref {cfn_param}")
+            ref_target = INTERNAL_SUBVAR_TO_RESOURCE.get(tf_var, cfn_param)
+            var_map_lines.append(f"            {cfn_param}: !Ref {ref_target}")
 
         lines.append(f"  {sm['logical_id']}:")
         lines.append("    Type: AWS::StepFunctions::StateMachine")
+
+        # State machines that reference sibling state machines must wait for
+        # them to exist first.
+        internal_deps = [
+            INTERNAL_SUBVAR_TO_RESOURCE[v]
+            for v in sm["sub_vars"]
+            if v in INTERNAL_SUBVAR_TO_RESOURCE
+        ]
+        if internal_deps:
+            lines.append(f"    DependsOn: [{', '.join(internal_deps)}]")
+
         lines.append("    Properties:")
         lines.append(f"      StateMachineName: !Sub ${{NamePrefix}}-{sm['name_suffix']}")
         lines.append("      RoleArn: !Ref StepFunctionsRoleArn")

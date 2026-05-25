@@ -55,6 +55,7 @@ Parameters:
   RedshiftNumberOfNodes:              { Type: Number, Default: 1 }
   RedshiftDatabaseName:               { Type: String, Default: datahorizon }
   RedshiftMasterUsername:             { Type: String, Default: admin }
+  RedshiftMasterPassword:             { Type: String, NoEcho: true }
   EventBridgeScheduleExpression:      { Type: String, Default: rate(6 hours) }
   GlueHeapThresholdBytes:             { Type: Number, Default: 8589934592 }
 
@@ -77,7 +78,7 @@ Resources:
         NumberOfNodes:         !Ref RedshiftNumberOfNodes
         DatabaseName:          !Ref RedshiftDatabaseName
         MasterUsername:        !Ref RedshiftMasterUsername
-        MasterPasswordSsmName: !Sub /data-horizon/${Environment}/redshift-master-password
+        MasterUserPassword:    !Ref RedshiftMasterPassword
         SubnetIds:             !Join [',', !Ref PrivateSubnetIds]
         SecurityGroupId:       !Ref RedshiftSecurityGroupId
         ValidatedBucketArn:    !Ref ValidatedBucketArn

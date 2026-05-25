@@ -9,7 +9,6 @@ parent-foundation.yaml      # foundation stack: VPC, IAM, S3, DynamoDB, SQS/SNS,
 parent-app.yaml             # app stack: Redshift, Glue, Lambda, Step Functions, EventBridge, alarms
 nested/                     # one nested template per terraform module
 params/{dev,staging,prod}.json
-samconfig.toml              # SAM CLI per-env config
 scripts/
   full-deploy.sh            # single end-to-end deploy (use this)
   bootstrap.sh              # seeds SecureString SSM params (called by full-deploy.sh)
@@ -20,7 +19,6 @@ scripts/
 ## Prerequisites
 
 - AWS CLI v2 configured (`aws sts get-caller-identity` must succeed)
-- AWS SAM CLI installed (`sam --version`)
 - Python 3.12+ with `pip`
 - `zip` available on PATH (used to build Lambda zips and Glue utils.zip)
 
@@ -53,11 +51,6 @@ Safe and incremental:
 - SSM secrets skipped if already present.
 - CloudFormation change sets — no-op when nothing changed, incremental update otherwise.
 
-### Providing secrets non-interactively
-
-```bash
-SOURCE_API_TOKEN="..." REDSHIFT_MASTER_PASSWORD="..." ./scripts/full-deploy.sh dev
-```
 
 ### Forcing a secret rotation
 
@@ -65,21 +58,47 @@ SOURCE_API_TOKEN="..." REDSHIFT_MASTER_PASSWORD="..." ./scripts/full-deploy.sh d
 FORCE_RESEED=1 ./scripts/full-deploy.sh dev
 ```
 
-## What it does under the hood
 
-If you want to run the individual phases manually:
+## End-to-end run
+
+The order below brings up the mock source API, deploys the pipeline, prepares Redshift, seeds the source config, and triggers the first pipeline run.
+
+### 1. Deploy the mock source API
+
+The pipeline needs a running source API before it can extract anything. Deploy it first and copy the printed `ApiUrl` and access token.
 
 ```bash
-./scripts/bootstrap.sh dev --source-api-token "..." --redshift-master-password "..."
-python scripts/render-stepfunctions.py
+cd ../../source-mock-api/cloudformation
 ./scripts/deploy.sh dev
 ```
 
-## CFN-vs-Terraform notes
+Then update `cloudformation/params/dev.json` in this folder so `SourceApiBaseUrl` matches the printed `ApiUrl`. The deploy also prints an access token (24-hour TTL) — supply it on the next step via the `SOURCE_API_TOKEN` env var.
 
-1. **SecureString SSM params** — CFN cannot create them. The bootstrap step (inside `full-deploy.sh`) seeds them via `aws ssm put-parameter`.
-2. **Account suffix** in S3 bucket names — computed in the deploy script and passed as a parameter (CFN has no string-slice function).
-3. **Two-pass deploy** — foundation creates the scripts bucket; deploy script then uploads Glue scripts and Lambda zips; app stack references them.
-4. **Step Function ASL** — `render-stepfunctions.py` inlines the ASL JSON into the YAML via `Fn::Sub` (mirrors terraform's `templatefile()`).
+### 2. Deploy the pipeline
 
-Everything else is byte-equivalent to terraform.
+```bash
+cd ../../data-horizon-pipeline/cloudformation
+SOURCE_API_TOKEN="<token-from-step-1>" ./scripts/full-deploy.sh dev
+```
+
+Provisions the foundation + app stacks. On first run it prompts (silently) for any missing secrets; subsequent runs reuse what's in SSM. See `params/dev.json` for tunables like `RedshiftMasterPassword`.
+
+### 3. Run Redshift migrations
+
+Creates the target schema and tables in the Redshift cluster:
+
+```bash
+cd ..
+bash scripts/run_redshift_migrations.sh dev
+```
+
+Applies every `.sql` file under `redshift/migrations/` in order via the Redshift Data API.
+
+### 4. Upload the source config to the orchestration bucket
+
+The pipeline's Config Loader reads tag/source definitions from `s3://<config-bucket>/source_config/`. Upload `config/source_config/` to that key in the config bucket (the bucket name is in the foundation stack's `ConfigBucketName` output).
+
+### 5. Start the parent Step Function
+
+Grab the parent state-machine ARN from the app stack's `ParentStateMachineArn` output and start an execution with input `{"startFrom":"config_loader"}`. Watch progress in the AWS Console → Step Functions, or tail CloudWatch Logs for the orchestrator Lambda and the Glue jobs. End state: Parquet in the `validated` bucket and rows loaded into Redshift staging tables.
+

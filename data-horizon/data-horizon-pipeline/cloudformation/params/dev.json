@@ -2,7 +2,7 @@
   "Environment": "dev",
   "NamePrefix": "data-horizon-dev",
   "AlertEmail": "gmuppaneni@evoketechnologies.com",
-  "SourceApiBaseUrl": "https://ceep117yg5.execute-api.us-east-1.amazonaws.com/prod",
+  "SourceApiBaseUrl": "https://iul4ystn17.execute-api.us-east-1.amazonaws.com/dev",
   "VpcCidr": "10.0.0.0/16",
   "PrivateSubnet1Cidr": "10.0.1.0/24",
   "PrivateSubnet2Cidr": "10.0.2.0/24",
@@ -22,5 +22,6 @@
   "RedshiftNumberOfNodes": "1",
   "RedshiftDatabaseName": "datahorizon",
   "RedshiftMasterUsername": "admin",
+  "RedshiftMasterPassword": "admin12Admin",
   "EventBridgeScheduleExpression": "rate(6 hours)"
 }

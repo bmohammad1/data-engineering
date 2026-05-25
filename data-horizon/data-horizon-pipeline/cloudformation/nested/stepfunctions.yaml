@@ -6,10 +6,6 @@ Parameters:
     Type: String
   StepFunctionsRoleArn:
     Type: String
-  ConfigLoaderStateMachineArn:
-    Type: String
-  DataExtractorStateMachineArn:
-    Type: String
   ExtractionFailuresQueueUrl:
     Type: String
   MapStateProcessorLambdaArn:
@@ -26,15 +22,11 @@ Parameters:
     Type: String
   RedshiftIamRoleArn:
     Type: String
-  RedshiftLoadStateMachineArn:
-    Type: String
   RedshiftMasterUsername:
     Type: String
   SnsTopicArn:
     Type: String
   TransformGlueJobName:
-    Type: String
-  TransformationStateMachineArn:
     Type: String
   ValidatedBucketName:
     Type: String
@@ -659,6 +651,7 @@ Resources:
 
   ModularOrchestratorStateMachine:
     Type: AWS::StepFunctions::StateMachine
+    DependsOn: [ConfigLoaderStateMachine, DataExtractorStateMachine, TransformationStateMachine, RedshiftLoadStateMachine]
     Properties:
       StateMachineName: !Sub ${NamePrefix}-modular-orchestrator
       RoleArn: !Ref StepFunctionsRoleArn
@@ -905,10 +898,10 @@ Resources:
                 }
               }
             }
-          - ConfigLoaderStateMachineArn: !Ref ConfigLoaderStateMachineArn
-            DataExtractorStateMachineArn: !Ref DataExtractorStateMachineArn
-            TransformationStateMachineArn: !Ref TransformationStateMachineArn
-            RedshiftLoadStateMachineArn: !Ref RedshiftLoadStateMachineArn
+          - ConfigLoaderStateMachineArn: !Ref ConfigLoaderStateMachine
+            DataExtractorStateMachineArn: !Ref DataExtractorStateMachine
+            TransformationStateMachineArn: !Ref TransformationStateMachine
+            RedshiftLoadStateMachineArn: !Ref RedshiftLoadStateMachine
             SnsTopicArn: !Ref SnsTopicArn
       Tags:
         - { Key: Name, Value: !Sub "${NamePrefix}-modular-orchestrator" }
