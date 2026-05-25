@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — EventBridge schedule rule for the parent pipeline (mirrors terraform/modules/eventbridge).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  ScheduleExpression:
+    Type: String
+    Default: rate(6 hours)
+  ParentStateMachineArn:
+    Type: String
+  EventBridgeRoleArn:
+    Type: String
+  EventBridgeFailuresQueueArn:
+    Type: String
+
+Resources:
+
+  PipelineScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${NamePrefix}-pipeline-schedule
+      Description: Triggers the data-horizon parent pipeline every 6 hours
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: ParentStateMachine
+          Arn: !Ref ParentStateMachineArn
+          RoleArn: !Ref EventBridgeRoleArn
+          Input: '{"startFrom": "config_loader"}'
+          DeadLetterConfig:
+            Arn: !Ref EventBridgeFailuresQueueArn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 600
+            MaximumRetryAttempts: 3
+
+Outputs:
+  RuleName:
+    Value: !Ref PipelineScheduleRule
+  RuleArn:
+    Value: !GetAtt PipelineScheduleRule.Arn

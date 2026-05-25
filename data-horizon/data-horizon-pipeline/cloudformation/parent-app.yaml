@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Data Horizon — APP stack.
+  Builds the compute and orchestration layer on top of the foundation stack:
+  Redshift, Glue jobs, Lambda functions, Step Functions, EventBridge schedule,
+  CloudWatch alarms. Deploy the foundation stack first, upload Glue scripts and
+  Lambda zips to the buckets it creates, then deploy this stack.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  NamePrefix:
+    Type: String
+
+  # Foundation stack outputs — passed in by the deploy script.
+  ScriptsBucketName:                  { Type: String }
+  ValidatedBucketArn:                 { Type: String }
+  OrchestrationBucketName:            { Type: String }
+  ValidatedBucketName:                { Type: String }
+  DynamoDbTableName:                  { Type: String }
+  DynamoDbTableArn:                   { Type: String }
+  ExtractionFailuresQueueUrl:         { Type: String }
+  ExtractionFailuresQueueName:        { Type: String }
+  EventBridgeFailuresQueueArn:        { Type: String }
+  SnsTopicArn:                        { Type: String }
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  RedshiftSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  LambdaConfigLoaderRoleArn:          { Type: String }
+  LambdaMapProcessorRoleArn:          { Type: String }
+  GlueRoleArn:                        { Type: String }
+  StepFunctionsRoleArn:               { Type: String }
+  EventBridgeRoleArn:                 { Type: String }
+
+  # Lambda artifacts (uploaded by the deploy script to the artifact bucket).
+  ArtifactBucket:                     { Type: String }
+  ConfigLoaderS3Key:                  { Type: String }
+  MapProcessorS3Key:                  { Type: String }
+
+  # Tunables (mirror terraform variables).
+  ConfigLoaderMemory:                 { Type: Number, Default: 256 }
+  ConfigLoaderTimeout:                { Type: Number, Default: 60 }
+  MapProcessorMemory:                 { Type: Number, Default: 256 }
+  MapProcessorTimeout:                { Type: Number, Default: 60 }
+  TransformWorkers:                   { Type: Number, Default: 2 }
+  TransformWorkerType:                { Type: String, Default: G.1X }
+  TransformTimeoutMinutes:            { Type: Number, Default: 60 }
+  ValidationWorkers:                  { Type: Number, Default: 2 }
+  ValidationWorkerType:               { Type: String, Default: G.1X }
+  ValidationTimeoutMinutes:           { Type: Number, Default: 60 }
+  LogRetentionDays:                   { Type: Number, Default: 30 }
+  RedshiftNodeType:                   { Type: String, Default: dc2.large }
+  RedshiftNumberOfNodes:              { Type: Number, Default: 1 }
+  RedshiftDatabaseName:               { Type: String, Default: datahorizon }
+  RedshiftMasterUsername:             { Type: String, Default: admin }
+  EventBridgeScheduleExpression:      { Type: String, Default: rate(6 hours) }
+  GlueHeapThresholdBytes:             { Type: Number, Default: 8589934592 }
+
+  # Lambda timeout in milliseconds (computed by the deploy script as seconds * 1000 * 0.8).
+  # Alarms fire when Duration exceeds these thresholds. Computed up-front so we don't
+  # need arithmetic intrinsics in the template.
+  ConfigLoaderTimeoutMs:              { Type: Number }
+  MapProcessorTimeoutMs:              { Type: Number }
+
+Resources:
+
+  RedshiftStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/redshift.yaml
+      Parameters:
+        NamePrefix:            !Ref NamePrefix
+        Environment:           !Ref Environment
+        NodeType:              !Ref RedshiftNodeType
+        NumberOfNodes:         !Ref RedshiftNumberOfNodes
+        DatabaseName:          !Ref RedshiftDatabaseName
+        MasterUsername:        !Ref RedshiftMasterUsername
+        MasterPasswordSsmName: !Sub /data-horizon/${Environment}/redshift-master-password
+        SubnetIds:             !Join [',', !Ref PrivateSubnetIds]
+        SecurityGroupId:       !Ref RedshiftSecurityGroupId
+        ValidatedBucketArn:    !Ref ValidatedBucketArn
+
+  GlueJobsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/glue-jobs.yaml
+      Parameters:
+        NamePrefix:               !Ref NamePrefix
+        Environment:              !Ref Environment
+        GlueRoleArn:              !Ref GlueRoleArn
+        ScriptsBucketName:        !Ref ScriptsBucketName
+        TransformWorkers:         !Ref TransformWorkers
+        TransformWorkerType:      !Ref TransformWorkerType
+        TransformTimeoutMinutes:  !Ref TransformTimeoutMinutes
+        ValidationWorkers:        !Ref ValidationWorkers
+        ValidationWorkerType:     !Ref ValidationWorkerType
+        ValidationTimeoutMinutes: !Ref ValidationTimeoutMinutes
+        LogRetentionDays:         !Ref LogRetentionDays
+
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/lambda.yaml
+      Parameters:
+        NamePrefix:           !Ref NamePrefix
+        Environment:          !Ref Environment
+        ConfigLoaderRoleArn:  !Ref LambdaConfigLoaderRoleArn
+        MapProcessorRoleArn:  !Ref LambdaMapProcessorRoleArn
+        ConfigLoaderMemory:   !Ref ConfigLoaderMemory
+        ConfigLoaderTimeout:  !Ref ConfigLoaderTimeout
+        MapProcessorMemory:   !Ref MapProcessorMemory
+        MapProcessorTimeout:  !Ref MapProcessorTimeout
+        LogRetentionDays:     !Ref LogRetentionDays
+        ArtifactBucket:       !Ref ArtifactBucket
+        ConfigLoaderS3Key:    !Ref ConfigLoaderS3Key
+        MapProcessorS3Key:    !Ref MapProcessorS3Key
+
+  StepFunctionsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/stepfunctions.yaml
+      Parameters:
+        NamePrefix:                    !Ref NamePrefix
+        StepFunctionsRoleArn:          !Ref StepFunctionsRoleArn
+        ConfigLoaderLambdaArn:         !GetAtt LambdaStack.Outputs.ConfigLoaderFunctionArn
+        MapStateProcessorLambdaArn:    !GetAtt LambdaStack.Outputs.MapStateProcessorFunctionArn
+        OrchestrationBucketName:       !Ref OrchestrationBucketName
+        ExtractionFailuresQueueUrl:    !Ref ExtractionFailuresQueueUrl
+        PipelineStateTable:            !Ref DynamoDbTableName
+        TransformGlueJobName:          !GetAtt GlueJobsStack.Outputs.TransformJobName
+        ValidationGlueJobName:         !GetAtt GlueJobsStack.Outputs.ValidationJobName
+        SnsTopicArn:                   !Ref SnsTopicArn
+        RedshiftClusterId:             !GetAtt RedshiftStack.Outputs.ClusterIdentifier
+        RedshiftDatabase:              !GetAtt RedshiftStack.Outputs.DatabaseName
+        RedshiftMasterUsername:        !GetAtt RedshiftStack.Outputs.MasterUsername
+        ValidatedBucketName:           !Ref ValidatedBucketName
+        RedshiftIamRoleArn:            !GetAtt RedshiftStack.Outputs.RedshiftRoleArn
+
+  EventBridgeStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/eventbridge.yaml
+      Parameters:
+        NamePrefix:                  !Ref NamePrefix
+        ScheduleExpression:          !Ref EventBridgeScheduleExpression
+        ParentStateMachineArn:       !GetAtt StepFunctionsStack.Outputs.ModularOrchestratorStateMachineArn
+        EventBridgeRoleArn:          !Ref EventBridgeRoleArn
+        EventBridgeFailuresQueueArn: !Ref EventBridgeFailuresQueueArn
+
+  MonitoringStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/monitoring.yaml
+      Parameters:
+        NamePrefix:                    !Ref NamePrefix
+        SnsTopicArn:                   !Ref SnsTopicArn
+        ParentStateMachineArn:         !GetAtt StepFunctionsStack.Outputs.ModularOrchestratorStateMachineArn
+        ConfigLoaderFunctionName:      !GetAtt LambdaStack.Outputs.ConfigLoaderFunctionName
+        MapStateProcessorFunctionName: !GetAtt LambdaStack.Outputs.MapStateProcessorFunctionName
+        ConfigLoaderTimeoutMs:         !Ref ConfigLoaderTimeoutMs
+        MapProcessorTimeoutMs:         !Ref MapProcessorTimeoutMs
+        TransformGlueJobName:          !GetAtt GlueJobsStack.Outputs.TransformJobName
+        ValidationGlueJobName:         !GetAtt GlueJobsStack.Outputs.ValidationJobName
+        GlueHeapThresholdBytes:        !Ref GlueHeapThresholdBytes
+        ExtractionFailuresQueueName:   !Ref ExtractionFailuresQueueName
+        DynamoDbTableName:             !Ref DynamoDbTableName
+
+Outputs:
+  ParentStateMachineArn:
+    Value: !GetAtt StepFunctionsStack.Outputs.ModularOrchestratorStateMachineArn
+  RedshiftClusterEndpoint:
+    Value: !GetAtt RedshiftStack.Outputs.ClusterEndpoint
+  ConfigLoaderFunctionName:
+    Value: !GetAtt LambdaStack.Outputs.ConfigLoaderFunctionName
+  MapStateProcessorFunctionName:
+    Value: !GetAtt LambdaStack.Outputs.MapStateProcessorFunctionName
+  TransformGlueJobName:
+    Value: !GetAtt GlueJobsStack.Outputs.TransformJobName
+  ValidationGlueJobName:
+    Value: !GetAtt GlueJobsStack.Outputs.ValidationJobName

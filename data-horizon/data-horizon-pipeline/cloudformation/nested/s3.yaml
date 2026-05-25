@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — 7 S3 buckets (mirrors terraform/modules/s3).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  AccountSuffix:
+    Type: String
+    Description: Last 8 digits of AWS account ID, computed by deploy script.
+    AllowedPattern: ^[0-9]{8}$
+
+Resources:
+
+  RawBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-raw-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: archive-after-30d
+            Status: Enabled
+            Transitions:
+              - StorageClass: DEEP_ARCHIVE
+                TransitionInDays: 30
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-raw-${AccountSuffix}" }
+
+  CleanedBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-cleaned-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: archive-after-30d
+            Status: Enabled
+            Transitions:
+              - StorageClass: DEEP_ARCHIVE
+                TransitionInDays: 30
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-cleaned-${AccountSuffix}" }
+
+  ValidatedBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-validated-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-validated-${AccountSuffix}" }
+
+  BadBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-bad-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-bad-${AccountSuffix}" }
+
+  ScriptsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-scripts-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-scripts-${AccountSuffix}" }
+
+  OrchestrationBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-orchestration-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-after-30d
+            Status: Enabled
+            ExpirationInDays: 30
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-orchestration-${AccountSuffix}" }
+
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${NamePrefix}-config-${AccountSuffix}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-config-${AccountSuffix}" }
+
+Outputs:
+  RawBucketName:
+    Value: !Ref RawBucket
+  RawBucketArn:
+    Value: !GetAtt RawBucket.Arn
+  CleanedBucketName:
+    Value: !Ref CleanedBucket
+  CleanedBucketArn:
+    Value: !GetAtt CleanedBucket.Arn
+  ValidatedBucketName:
+    Value: !Ref ValidatedBucket
+  ValidatedBucketArn:
+    Value: !GetAtt ValidatedBucket.Arn
+  BadBucketName:
+    Value: !Ref BadBucket
+  BadBucketArn:
+    Value: !GetAtt BadBucket.Arn
+  ScriptsBucketName:
+    Value: !Ref ScriptsBucket
+  ScriptsBucketArn:
+    Value: !GetAtt ScriptsBucket.Arn
+  OrchestrationBucketName:
+    Value: !Ref OrchestrationBucket
+  OrchestrationBucketArn:
+    Value: !GetAtt OrchestrationBucket.Arn
+  ConfigBucketName:
+    Value: !Ref ConfigBucket
+  ConfigBucketArn:
+    Value: !GetAtt ConfigBucket.Arn

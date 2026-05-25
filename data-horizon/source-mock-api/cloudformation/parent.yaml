@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Mock Source API — parent stack orchestrating Cognito + Lambda + API Gateway.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: prod
+  LambdaMemorySize:
+    Type: Number
+    Default: 256
+  LambdaTimeout:
+    Type: Number
+    Default: 30
+  ArtifactBucket:
+    Type: String
+    Description: S3 bucket holding the Lambda zip (deploy script uploads here).
+  LambdaS3Key:
+    Type: String
+    Description: S3 key for the Lambda zip within ArtifactBucket.
+
+Resources:
+
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/cognito.yaml
+      Parameters:
+        Environment: !Ref Environment
+
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/lambda.yaml
+      Parameters:
+        Environment:      !Ref Environment
+        LambdaMemorySize: !Ref LambdaMemorySize
+        LambdaTimeout:    !Ref LambdaTimeout
+        ArtifactBucket:   !Ref ArtifactBucket
+        LambdaS3Key:      !Ref LambdaS3Key
+
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/apigateway.yaml
+      Parameters:
+        Environment:        !Ref Environment
+        UserPoolArn:        !GetAtt CognitoStack.Outputs.UserPoolArn
+        LambdaFunctionName: !GetAtt LambdaStack.Outputs.FunctionName
+        LambdaInvokeArn:    !GetAtt LambdaStack.Outputs.InvokeArn
+
+Outputs:
+  ApiUrl:
+    Value: !GetAtt ApiGatewayStack.Outputs.ApiUrl
+  LambdaFunctionName:
+    Value: !GetAtt LambdaStack.Outputs.FunctionName
+  CognitoUserPoolId:
+    Value: !GetAtt CognitoStack.Outputs.UserPoolId
+  CognitoTokenUrl:
+    Value: !GetAtt CognitoStack.Outputs.TokenUrl
+  CognitoCustomScope:
+    Value: mock-source-api/read
+  CognitoClientId:
+    Value: !GetAtt CognitoStack.Outputs.ClientId

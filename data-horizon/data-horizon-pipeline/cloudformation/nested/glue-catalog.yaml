@@ -1,0 +1,607 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — Glue Data Catalog database and 16 tables (mirrors terraform/modules/glue_catalog).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  RawBucketName:
+    Type: String
+  CleanedBucketName:
+    Type: String
+  ValidatedBucketName:
+    Type: String
+  BadBucketName:
+    Type: String
+
+Mappings:
+  Serdes:
+    Json:
+      InputFormat: org.apache.hadoop.mapred.TextInputFormat
+      OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+      SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+    Parquet:
+      InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+      OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+      SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+
+Resources:
+
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        # name_prefix uses hyphens (e.g. data-horizon-dev); terraform converts to underscores.
+        # We cannot do !Sub + replace in CFN; the deploy script passes a sanitized NamePrefix.
+        # Here we just append _db and rely on the caller to have replaced hyphens.
+        Name: !Sub
+          - "${SanitizedPrefix}_db"
+          - SanitizedPrefix: !Join ["_", !Split ["-", !Ref NamePrefix]]
+        Description: Data Horizon pipeline catalog database
+
+  # ---------- Raw envelope table ----------
+  RawDataTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: raw_data
+        Description: Raw TagResponse JSON files, one object per tag per run
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${RawBucketName}/raw/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: run_id, Type: string }
+            - { Name: tag_id, Type: string }
+            - { Name: data,   Type: string }
+
+  # ---------- Cleaned tables (JSON) ----------
+  CleanedMeasurementsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_measurements
+        Description: Cleaned measurement records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: MeasurementID, Type: string }
+            - { Name: TagID,         Type: string }
+            - { Name: Timestamp,     Type: timestamp }
+            - { Name: Value,         Type: double }
+            - { Name: QualityFlag,   Type: string }
+            - { Name: _run_id,       Type: string }
+            - { Name: _ingested_at,  Type: timestamp }
+
+  CleanedAlarmsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_alarms
+        Description: Cleaned alarm records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: AlarmID,        Type: string }
+            - { Name: TagID,          Type: string }
+            - { Name: AlarmType,      Type: string }
+            - { Name: ThresholdValue, Type: double }
+            - { Name: Timestamp,      Type: timestamp }
+            - { Name: Status,         Type: string }
+            - { Name: _run_id,        Type: string }
+            - { Name: _ingested_at,   Type: timestamp }
+
+  CleanedMaintenanceTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_maintenance
+        Description: Cleaned maintenance records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: MaintenanceID,   Type: string }
+            - { Name: TagID,           Type: string }
+            - { Name: WorkOrderID,     Type: string }
+            - { Name: MaintenanceDate, Type: date }
+            - { Name: ActionTaken,     Type: string }
+            - { Name: Technician,      Type: string }
+            - { Name: _run_id,         Type: string }
+            - { Name: _ingested_at,    Type: timestamp }
+
+  CleanedEventsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_events
+        Description: Cleaned event records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: EventID,      Type: string }
+            - { Name: TagID,        Type: string }
+            - { Name: EventType,    Type: string }
+            - { Name: Timestamp,    Type: timestamp }
+            - { Name: Notes,        Type: string }
+            - { Name: _run_id,      Type: string }
+            - { Name: _ingested_at, Type: timestamp }
+
+  CleanedBillingTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_billing
+        Description: Cleaned billing records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: BillingID,         Type: string }
+            - { Name: TagID,             Type: string }
+            - { Name: CustomerID,        Type: string }
+            - { Name: BillingPeriod,     Type: string }
+            - { Name: ConsumptionVolume, Type: double }
+            - { Name: TotalAmount,       Type: double }
+            - { Name: PaymentStatus,     Type: string }
+            - { Name: _run_id,           Type: string }
+            - { Name: _ingested_at,      Type: timestamp }
+
+  CleanedContractsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_contracts
+        Description: Cleaned contract records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: ContractID,        Type: string }
+            - { Name: CustomerID,        Type: string }
+            - { Name: TagID,             Type: string }
+            - { Name: ContractStartDate, Type: date }
+            - { Name: ContractEndDate,   Type: date }
+            - { Name: ContractVolume,    Type: double }
+            - { Name: PricePerUnit,      Type: double }
+            - { Name: _run_id,           Type: string }
+            - { Name: _ingested_at,      Type: timestamp }
+
+  CleanedInventoryTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_inventory
+        Description: Cleaned inventory records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: InventoryID,     Type: string }
+            - { Name: TagID,           Type: string }
+            - { Name: MaterialType,    Type: string }
+            - { Name: Quantity,        Type: int }
+            - { Name: StorageLocation, Type: string }
+            - { Name: LastUpdated,     Type: timestamp }
+            - { Name: _run_id,         Type: string }
+            - { Name: _ingested_at,    Type: timestamp }
+
+  CleanedRegulatoryComplianceTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_regulatory_compliance
+        Description: Cleaned regulatory compliance records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: ComplianceID,   Type: string }
+            - { Name: TagID,          Type: string }
+            - { Name: RegulationName, Type: string }
+            - { Name: InspectionDate, Type: date }
+            - { Name: Status,         Type: string }
+            - { Name: Inspector,      Type: string }
+            - { Name: _run_id,        Type: string }
+            - { Name: _ingested_at,   Type: timestamp }
+
+  CleanedFinancialForecastsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: cleaned_financial_forecasts
+        Description: Cleaned financial forecast records (JSON)
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${CleanedBucketName}/cleaned/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: ForecastID,          Type: string }
+            - { Name: TagID,               Type: string }
+            - { Name: ForecastDate,        Type: date }
+            - { Name: ExpectedConsumption, Type: double }
+            - { Name: ExpectedRevenue,     Type: double }
+            - { Name: RiskFactor,          Type: double }
+            - { Name: _run_id,             Type: string }
+            - { Name: _ingested_at,        Type: timestamp }
+
+  # ---------- Validated tables (Parquet, SNAPPY) ----------
+  ValidatedMeasurementsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_measurements
+        Description: Validated measurement records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: MeasurementID,  Type: string }
+            - { Name: TagID,          Type: string }
+            - { Name: Timestamp,      Type: timestamp }
+            - { Name: Value,          Type: double }
+            - { Name: QualityFlag,    Type: string }
+            - { Name: _run_id,        Type: string }
+            - { Name: _ingested_at,   Type: timestamp }
+            - { Name: partition_date, Type: date }
+
+  ValidatedAlarmsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_alarms
+        Description: Validated alarm records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: AlarmID,        Type: string }
+            - { Name: TagID,          Type: string }
+            - { Name: AlarmType,      Type: string }
+            - { Name: ThresholdValue, Type: double }
+            - { Name: Timestamp,      Type: timestamp }
+            - { Name: Status,         Type: string }
+            - { Name: _run_id,        Type: string }
+            - { Name: _ingested_at,   Type: timestamp }
+            - { Name: partition_date, Type: date }
+
+  ValidatedMaintenanceTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_maintenance
+        Description: Validated maintenance records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: MaintenanceID,   Type: string }
+            - { Name: TagID,           Type: string }
+            - { Name: WorkOrderID,     Type: string }
+            - { Name: MaintenanceDate, Type: date }
+            - { Name: ActionTaken,     Type: string }
+            - { Name: Technician,      Type: string }
+            - { Name: _run_id,         Type: string }
+            - { Name: _ingested_at,    Type: timestamp }
+            - { Name: partition_date,  Type: date }
+
+  ValidatedEventsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_events
+        Description: Validated event records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: EventID,        Type: string }
+            - { Name: TagID,          Type: string }
+            - { Name: EventType,      Type: string }
+            - { Name: Timestamp,      Type: timestamp }
+            - { Name: Notes,          Type: string }
+            - { Name: _run_id,        Type: string }
+            - { Name: _ingested_at,   Type: timestamp }
+            - { Name: partition_date, Type: date }
+
+  ValidatedBillingTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_billing
+        Description: Validated billing records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: BillingID,         Type: string }
+            - { Name: TagID,             Type: string }
+            - { Name: CustomerID,        Type: string }
+            - { Name: BillingPeriod,     Type: string }
+            - { Name: ConsumptionVolume, Type: double }
+            - { Name: TotalAmount,       Type: double }
+            - { Name: PaymentStatus,     Type: string }
+            - { Name: _run_id,           Type: string }
+            - { Name: _ingested_at,      Type: timestamp }
+
+  ValidatedContractsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_contracts
+        Description: Validated contract records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: ContractID,        Type: string }
+            - { Name: CustomerID,        Type: string }
+            - { Name: TagID,             Type: string }
+            - { Name: ContractStartDate, Type: date }
+            - { Name: ContractEndDate,   Type: date }
+            - { Name: ContractVolume,    Type: double }
+            - { Name: PricePerUnit,      Type: double }
+            - { Name: _run_id,           Type: string }
+            - { Name: _ingested_at,      Type: timestamp }
+
+  ValidatedInventoryTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_inventory
+        Description: Validated inventory records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: InventoryID,     Type: string }
+            - { Name: TagID,           Type: string }
+            - { Name: MaterialType,    Type: string }
+            - { Name: Quantity,        Type: int }
+            - { Name: StorageLocation, Type: string }
+            - { Name: LastUpdated,     Type: timestamp }
+            - { Name: _run_id,         Type: string }
+            - { Name: _ingested_at,    Type: timestamp }
+            - { Name: partition_date,  Type: date }
+
+  ValidatedRegulatoryComplianceTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_regulatory_compliance
+        Description: Validated regulatory compliance records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: ComplianceID,   Type: string }
+            - { Name: TagID,          Type: string }
+            - { Name: RegulationName, Type: string }
+            - { Name: InspectionDate, Type: date }
+            - { Name: Status,         Type: string }
+            - { Name: Inspector,      Type: string }
+            - { Name: _run_id,        Type: string }
+            - { Name: _ingested_at,   Type: timestamp }
+            - { Name: partition_date, Type: date }
+
+  ValidatedFinancialForecastsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: validated_financial_forecasts
+        Description: Validated financial forecast records (Parquet)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          parquet.compression: SNAPPY
+        PartitionKeys:
+          - { Name: partition_date, Type: date }
+        StorageDescriptor:
+          Location: !Sub s3://${ValidatedBucketName}/validated/
+          InputFormat: !FindInMap [Serdes, Parquet, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Parquet, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Parquet, SerializationLibrary]
+            Parameters: { serialization.format: '1' }
+          Columns:
+            - { Name: ForecastID,          Type: string }
+            - { Name: TagID,               Type: string }
+            - { Name: ForecastDate,        Type: date }
+            - { Name: ExpectedConsumption, Type: double }
+            - { Name: ExpectedRevenue,     Type: double }
+            - { Name: RiskFactor,          Type: double }
+            - { Name: _run_id,             Type: string }
+            - { Name: _ingested_at,        Type: timestamp }
+            - { Name: partition_date,      Type: date }
+
+  # ---------- Quarantine (JSON) ----------
+  QuarantineDataTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: quarantine_data
+        Description: Quarantined records that failed validation, with error details
+        TableType: EXTERNAL_TABLE
+        Parameters: { classification: json }
+        StorageDescriptor:
+          Location: !Sub s3://${BadBucketName}/quarantine/
+          InputFormat: !FindInMap [Serdes, Json, InputFormat]
+          OutputFormat: !FindInMap [Serdes, Json, OutputFormat]
+          SerdeInfo:
+            SerializationLibrary: !FindInMap [Serdes, Json, SerializationLibrary]
+          Columns:
+            - { Name: _source_table,      Type: string }
+            - { Name: _validation_errors, Type: string }
+            - { Name: _run_id,            Type: string }
+            - { Name: _ingested_at,       Type: timestamp }
+
+Outputs:
+  DatabaseName:
+    Value: !Ref GlueDatabase

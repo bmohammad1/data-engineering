@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — SQS DLQs + SNS failure alerts (mirrors terraform/modules/sqs and modules/sns).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  AlertEmail:
+    Type: String
+
+Resources:
+
+  EventBridgeFailuresQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${NamePrefix}-eventbridge-failures
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-eventbridge-failures" }
+
+  ExtractionFailuresQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${NamePrefix}-extraction-failures
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-extraction-failures" }
+
+  PipelineFailureAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${NamePrefix}-pipeline-failure-alerts
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-pipeline-failure-alerts" }
+
+  PipelineFailureEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref PipelineFailureAlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+Outputs:
+  EventBridgeFailuresQueueArn:
+    Value: !GetAtt EventBridgeFailuresQueue.Arn
+  EventBridgeFailuresQueueUrl:
+    Value: !Ref EventBridgeFailuresQueue
+  EventBridgeFailuresQueueName:
+    Value: !GetAtt EventBridgeFailuresQueue.QueueName
+  ExtractionFailuresQueueArn:
+    Value: !GetAtt ExtractionFailuresQueue.Arn
+  ExtractionFailuresQueueUrl:
+    Value: !Ref ExtractionFailuresQueue
+  ExtractionFailuresQueueName:
+    Value: !GetAtt ExtractionFailuresQueue.QueueName
+  SnsTopicArn:
+    Value: !Ref PipelineFailureAlertsTopic

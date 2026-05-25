@@ -41,3 +41,4 @@ lambdas/map_state_processor/package/
 .env
 *.pem
 credentials.json
+NUL

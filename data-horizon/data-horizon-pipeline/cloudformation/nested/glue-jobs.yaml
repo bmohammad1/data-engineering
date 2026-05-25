@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — Glue transform + validation jobs (mirrors terraform/modules/glue).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  Environment:
+    Type: String
+  GlueRoleArn:
+    Type: String
+  ScriptsBucketName:
+    Type: String
+  TransformWorkers:
+    Type: Number
+    Default: 2
+  TransformWorkerType:
+    Type: String
+    Default: G.1X
+  TransformTimeoutMinutes:
+    Type: Number
+    Default: 60
+  ValidationWorkers:
+    Type: Number
+    Default: 2
+  ValidationWorkerType:
+    Type: String
+    Default: G.1X
+  ValidationTimeoutMinutes:
+    Type: Number
+    Default: 60
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+
+Resources:
+
+  TransformJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub ${NamePrefix}-transform
+      Role: !Ref GlueRoleArn
+      GlueVersion: '4.0'
+      NumberOfWorkers: !Ref TransformWorkers
+      WorkerType: !Ref TransformWorkerType
+      Timeout: !Ref TransformTimeoutMinutes
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub s3://${ScriptsBucketName}/scripts/transform_job.py
+        PythonVersion: '3'
+      DefaultArguments:
+        "--job-language": python
+        "--enable-continuous-cloudwatch-log": "true"
+        "--ENVIRONMENT": !Ref Environment
+        "--LOG_LEVEL": INFO
+        "--extra-py-files": !Sub s3://${ScriptsBucketName}/scripts/utils.zip
+        "--conf": "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.kryo.unsafe=true"
+      Tags:
+        Name: !Sub ${NamePrefix}-transform
+
+  ValidationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub ${NamePrefix}-validation
+      Role: !Ref GlueRoleArn
+      GlueVersion: '4.0'
+      NumberOfWorkers: !Ref ValidationWorkers
+      WorkerType: !Ref ValidationWorkerType
+      Timeout: !Ref ValidationTimeoutMinutes
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub s3://${ScriptsBucketName}/scripts/validation_job.py
+        PythonVersion: '3'
+      DefaultArguments:
+        "--job-language": python
+        "--enable-continuous-cloudwatch-log": "true"
+        "--ENVIRONMENT": !Ref Environment
+        "--LOG_LEVEL": INFO
+        "--extra-py-files": !Sub s3://${ScriptsBucketName}/scripts/utils.zip
+        "--conf": "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.kryo.unsafe=true"
+      Tags:
+        Name: !Sub ${NamePrefix}-validation
+
+  TransformLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws-glue/jobs/${NamePrefix}-transform
+      RetentionInDays: !Ref LogRetentionDays
+
+  ValidationLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws-glue/jobs/${NamePrefix}-validation
+      RetentionInDays: !Ref LogRetentionDays
+
+Outputs:
+  TransformJobName:
+    Value: !Ref TransformJob
+  ValidationJobName:
+    Value: !Ref ValidationJob

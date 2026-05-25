@@ -1,0 +1,303 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — IAM roles and inline policies (mirrors terraform/modules/iam).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  Environment:
+    Type: String
+  SsmParameterPathPrefix:
+    Type: String
+    Description: e.g. /data-horizon/dev
+  RawBucketArn:
+    Type: String
+  CleanedBucketArn:
+    Type: String
+  ValidatedBucketArn:
+    Type: String
+  BadBucketArn:
+    Type: String
+  ScriptsBucketArn:
+    Type: String
+  OrchestrationBucketArn:
+    Type: String
+  ConfigBucketArn:
+    Type: String
+  DynamoDbTableArn:
+    Type: String
+  ExtractionFailuresQueueArn:
+    Type: String
+  EventBridgeFailuresQueueArn:
+    Type: String
+  SnsTopicArn:
+    Type: String
+
+Resources:
+
+  # ===========================================================================
+  # Lambda Config Loader Role
+  # ===========================================================================
+  LambdaConfigLoaderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-lambda-config-loader-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal: { Service: lambda.amazonaws.com }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-config-loader-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref ConfigBucketArn
+                  - !Sub ${ConfigBucketArn}/*
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${OrchestrationBucketArn}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:BatchWriteItem
+                Resource: !Ref DynamoDbTableArn
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParametersByPath
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPathPrefix}/*
+
+  # ===========================================================================
+  # Lambda Map State Processor Role
+  # ===========================================================================
+  LambdaMapProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-lambda-map-processor-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal: { Service: lambda.amazonaws.com }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-map-processor-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${RawBucketArn}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource: !Ref DynamoDbTableArn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !Ref ExtractionFailuresQueueArn
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParametersByPath
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPathPrefix}/*
+
+  # ===========================================================================
+  # Glue Role
+  # ===========================================================================
+  GlueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-glue-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal: { Service: glue.amazonaws.com }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-glue-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref RawBucketArn
+                  - !Sub ${RawBucketArn}/*
+                  - !Ref ScriptsBucketArn
+                  - !Sub ${ScriptsBucketArn}/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub ${CleanedBucketArn}/*
+                  - !Sub ${ValidatedBucketArn}/*
+                  - !Sub ${BadBucketArn}/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !Ref CleanedBucketArn
+                  - !Ref ValidatedBucketArn
+                  - !Ref BadBucketArn
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetPartitions
+                  - glue:BatchCreatePartition
+                  - glue:UpdateTable
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParametersByPath
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPathPrefix}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                Resource: !Ref DynamoDbTableArn
+
+  # ===========================================================================
+  # Step Functions Role
+  # ===========================================================================
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-step-functions-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal: { Service: states.amazonaws.com }
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-step-functions-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                  - states:DescribeExecution
+                  - states:StopExecution
+                Resource: !Sub arn:${AWS::Partition}:states:*:*:stateMachine:${NamePrefix}-*
+              - Effect: Allow
+                Action:
+                  - states:DescribeExecution
+                  - states:StopExecution
+                Resource: !Sub arn:${AWS::Partition}:states:*:*:execution:${NamePrefix}-*:*
+              - Effect: Allow
+                Action:
+                  - events:PutTargets
+                  - events:PutRule
+                  - events:DescribeRule
+                Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref OrchestrationBucketArn
+                  - !Sub ${OrchestrationBucketArn}/*
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !Sub arn:${AWS::Partition}:lambda:*:*:function:${NamePrefix}-*
+              - Effect: Allow
+                Action:
+                  - glue:StartJobRun
+                  - glue:GetJobRun
+                  - glue:GetJobRuns
+                  - glue:BatchStopJobRun
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - redshift-data:BatchExecuteStatement
+                  - redshift-data:ExecuteStatement
+                  - redshift-data:DescribeStatement
+                  - redshift-data:GetStatementResult
+                Resource: '*'
+              - Effect: Allow
+                Action: redshift:GetClusterCredentials
+                Resource: '*'
+              - Effect: Allow
+                Action: dynamodb:UpdateItem
+                Resource: !Ref DynamoDbTableArn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !Ref ExtractionFailuresQueueArn
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref SnsTopicArn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: '*'
+
+  # ===========================================================================
+  # EventBridge Role
+  # ===========================================================================
+  EventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-eventbridge-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal: { Service: events.amazonaws.com }
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-eventbridge-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Sub arn:${AWS::Partition}:states:*:*:stateMachine:${NamePrefix}-*
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !Ref EventBridgeFailuresQueueArn
+
+Outputs:
+  LambdaConfigLoaderRoleArn:
+    Value: !GetAtt LambdaConfigLoaderRole.Arn
+  LambdaMapProcessorRoleArn:
+    Value: !GetAtt LambdaMapProcessorRole.Arn
+  GlueRoleArn:
+    Value: !GetAtt GlueRole.Arn
+  StepFunctionsRoleArn:
+    Value: !GetAtt StepFunctionsRole.Arn
+  EventBridgeRoleArn:
+    Value: !GetAtt EventBridgeRole.Arn
