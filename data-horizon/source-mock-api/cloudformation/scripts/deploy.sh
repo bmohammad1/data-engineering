@@ -5,11 +5,11 @@
 #   ./scripts/deploy.sh <dev|staging|prod> [region]
 #
 # Steps, in order:
-#   1. Prereq check (aws, sam, python3, credentials)
+#   1. Prereq check (aws, python3, credentials)
 #   2. Build Lambda zip via ../../build.sh if missing or stale
 #   3. Ensure artifact S3 bucket exists (mock-source-api-artifacts-<account>-<region>)
 #   4. Upload Lambda zip with content-hashed key (so Lambda updates only on real change)
-#   5. sam deploy parent.yaml
+#   5. aws cloudformation package + deploy parent.yaml
 #   6. Print stack outputs + Cognito client secret + a test-token-request command
 
 set -euo pipefail
@@ -49,8 +49,24 @@ check_tool() {
   fi
 }
 check_tool aws     "https://aws.amazon.com/cli/"
-check_tool sam     "https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html"
-check_tool python3 "https://www.python.org/downloads/"
+
+# Resolve Python interpreter. On Windows, `python` may resolve to the Microsoft
+# Store stub which prints an install prompt instead of running — verify by
+# actually invoking --version.
+PYTHON=""
+for candidate in python3 python py; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" --version >/dev/null 2>&1; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+if [[ -z "$PYTHON" ]]; then
+  echo "  MISSING: working python (python3/python/py) — install from https://www.python.org/downloads/" >&2
+  echo "  (If 'python' opens the Microsoft Store on Windows, disable the App Execution Alias under Settings > Apps > Advanced app settings.)" >&2
+  missing=1
+else
+  echo "  OK: $PYTHON ($($PYTHON --version 2>&1))"
+fi
 
 if [[ $missing -ne 0 ]]; then
   echo "" >&2
@@ -126,10 +142,21 @@ echo "  s3://$ARTIFACT_BUCKET/$LAMBDA_KEY"
 echo ""
 
 # =============================================================================
-# 5. sam deploy
+# 5. Package + deploy via aws cloudformation
 # =============================================================================
-echo "==> Running sam deploy..."
-OVERRIDES=$(python3 - "$PARAMS_FILE" "$ARTIFACT_BUCKET" "$LAMBDA_KEY" <<'PY'
+echo "==> Packaging nested templates..."
+PACKAGED_TEMPLATE="$CFN_DIR/parent.packaged.yaml"
+aws cloudformation package \
+  --template-file "$CFN_DIR/parent.yaml" \
+  --s3-bucket "$ARTIFACT_BUCKET" \
+  --s3-prefix "cfn-templates" \
+  --output-template-file "$PACKAGED_TEMPLATE" \
+  --region "$REGION" >/dev/null
+echo "  OK: $PACKAGED_TEMPLATE"
+echo ""
+
+echo "==> Deploying stack $STACK_NAME..."
+OVERRIDES=$("$PYTHON" - "$PARAMS_FILE" "$ARTIFACT_BUCKET" "$LAMBDA_KEY" <<'PY'
 import json, sys
 params_file, bucket, key = sys.argv[1:]
 with open(params_file) as f: p = json.load(f)
@@ -140,14 +167,12 @@ print(" ".join(pairs))
 PY
 )
 
-sam deploy \
-  --template-file "$CFN_DIR/parent.yaml" \
+aws cloudformation deploy \
+  --template-file "$PACKAGED_TEMPLATE" \
   --stack-name "$STACK_NAME" \
   --region "$REGION" \
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --resolve-s3 \
   --no-fail-on-empty-changeset \
-  --no-confirm-changeset \
   --parameter-overrides $OVERRIDES
 echo ""
 
@@ -176,18 +201,55 @@ if [[ -n "$POOL_ID" && "$POOL_ID" != "None" ]]; then
     --query UserPoolClient.ClientSecret \
     --output text 2>/dev/null || echo "")
 
-  echo "==> Test the API:"
-  echo ""
-  echo "  # Get an access token"
-  echo "  TOKEN=\$(curl -s -X POST '$TOKEN_URL' \\"
-  echo "    -H 'Content-Type: application/x-www-form-urlencoded' \\"
-  echo "    -u '$CLIENT_ID:$CLIENT_SECRET' \\"
-  echo "    -d 'grant_type=client_credentials&scope=mock-source-api/read' \\"
-  echo "    | python3 -c \"import sys, json; print(json.load(sys.stdin)['access_token'])\")"
-  echo ""
-  echo "  # Call the API"
-  echo "  curl -s '$API_URL/tags' -H \"Authorization: Bearer \$TOKEN\" | head -c 200"
-  echo ""
+  # -------------------------------------------------------------------------
+  # Fetch a live access token (does not call the API itself).
+  # -------------------------------------------------------------------------
+  echo "==> Fetching access token from Cognito..."
+  TOKEN_JSON=$(curl -s -X POST "$TOKEN_URL" \
+    -H 'Content-Type: application/x-www-form-urlencoded' \
+    -u "$CLIENT_ID:$CLIENT_SECRET" \
+    -d 'grant_type=client_credentials&scope=mock-source-api/read')
+
+  TOKEN=$("$PYTHON" -c "import sys, json; print(json.loads(sys.argv[1]).get('access_token',''))" "$TOKEN_JSON")
+
+  if [[ -z "$TOKEN" ]]; then
+    echo "  FAILED to obtain token. Cognito response:" >&2
+    echo "  $TOKEN_JSON" >&2
+  else
+    echo "  OK: token acquired (length ${#TOKEN})"
+    echo ""
+
+    # ----- Reusable instructions for the user --------------------------------
+    echo "============================================================"
+    echo "Test instructions"
+    echo "============================================================"
+    echo ""
+    echo "Access token (valid for 24 hour):"
+    echo ""
+    echo "  $TOKEN"
+    echo ""
+    echo "Call the API (replace <TOKEN> with the value above):"
+    echo ""
+    echo "  curl -s '$API_URL/tags'             -H 'Authorization: Bearer <TOKEN>'"
+    echo "  curl -s '$API_URL/tag/TAG-00001'    -H 'Authorization: Bearer <TOKEN>'"
+    echo ""
+    echo "When the token expires, fetch a new one:"
+    echo ""
+    echo "  TOKEN=\$(curl -s -X POST '$TOKEN_URL' \\"
+    echo "    -H 'Content-Type: application/x-www-form-urlencoded' \\"
+    echo "    -u '$CLIENT_ID:$CLIENT_SECRET' \\"
+    echo "    -d 'grant_type=client_credentials&scope=mock-source-api/read' \\"
+    echo "    | $PYTHON -c \"import sys, json; print(json.load(sys.stdin)['access_token'])\")"
+    echo ""
+    echo "Cognito details:"
+    echo "  Token URL:     $TOKEN_URL"
+    echo "  Client ID:     $CLIENT_ID"
+    echo "  Client Secret: $CLIENT_SECRET"
+    echo "  Scope:         mock-source-api/read"
+    echo "  Grant type:    client_credentials"
+    echo "============================================================"
+    echo ""
+  fi
 fi
 
 echo "==> Deploy complete."

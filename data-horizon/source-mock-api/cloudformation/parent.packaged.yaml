@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Mock Source API — parent stack orchestrating Cognito + Lambda + 
+  API Gateway.
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues:
+    - dev
+    - staging
+    - prod
+    Default: prod
+  LambdaMemorySize:
+    Type: Number
+    Default: 256
+  LambdaTimeout:
+    Type: Number
+    Default: 30
+  ArtifactBucket:
+    Type: String
+    Description: S3 bucket holding the Lambda zip (deploy script uploads here).
+  LambdaS3Key:
+    Type: String
+    Description: S3 key for the Lambda zip within ArtifactBucket.
+Resources:
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/mock-source-api-artifacts-654654498256-us-east-1/cfn-templates/2159598005ae281b6de96ceacd5ddd80.template
+      Parameters:
+        Environment:
+          Ref: Environment
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/mock-source-api-artifacts-654654498256-us-east-1/cfn-templates/8c01fbe9c7d8c45b0860db174b8e3915.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        LambdaMemorySize:
+          Ref: LambdaMemorySize
+        LambdaTimeout:
+          Ref: LambdaTimeout
+        ArtifactBucket:
+          Ref: ArtifactBucket
+        LambdaS3Key:
+          Ref: LambdaS3Key
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/mock-source-api-artifacts-654654498256-us-east-1/cfn-templates/d9cd7a5cb6cd5a7f61e6517de1e9503e.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        UserPoolArn:
+          Fn::GetAtt:
+          - CognitoStack
+          - Outputs.UserPoolArn
+        LambdaFunctionName:
+          Fn::GetAtt:
+          - LambdaStack
+          - Outputs.FunctionName
+        LambdaInvokeArn:
+          Fn::GetAtt:
+          - LambdaStack
+          - Outputs.InvokeArn
+Outputs:
+  ApiUrl:
+    Value:
+      Fn::GetAtt:
+      - ApiGatewayStack
+      - Outputs.ApiUrl
+  LambdaFunctionName:
+    Value:
+      Fn::GetAtt:
+      - LambdaStack
+      - Outputs.FunctionName
+  CognitoUserPoolId:
+    Value:
+      Fn::GetAtt:
+      - CognitoStack
+      - Outputs.UserPoolId
+  CognitoTokenUrl:
+    Value:
+      Fn::GetAtt:
+      - CognitoStack
+      - Outputs.TokenUrl
+  CognitoCustomScope:
+    Value: mock-source-api/read
+  CognitoClientId:
+    Value:
+      Fn::GetAtt:
+      - CognitoStack
+      - Outputs.ClientId

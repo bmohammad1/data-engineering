@@ -18,7 +18,6 @@ scripts/
 ## Prerequisites
 
 - AWS CLI v2 configured (`aws sts get-caller-identity` must succeed)
-- AWS SAM CLI installed (`sam --version`)
 - Python 3.12+
 
 ## Deploy (one command)
@@ -33,7 +32,7 @@ The script handles everything:
 2. Builds the Lambda zip via `../build.sh` if missing or stale (installs Linux-compatible deps, copies app code).
 3. Creates the artifact S3 bucket (`mock-source-api-artifacts-<account>-<region>`) if missing.
 4. Uploads the Lambda zip with a content-hashed key (no re-upload when nothing changed).
-5. Runs `sam deploy` against `parent.yaml`, creating:
+5. Runs `aws cloudformation package` + `deploy` against `parent.yaml`, creating:
    - Cognito user pool + domain + M2M app client (`client_credentials` flow, scope `mock-source-api/read`)
    - Lambda function (`mock-source-api-<env>`, python3.12) + IAM role + log group
    - Regional REST API with Cognito authorizer on `GET /tags` and `GET /tag/{tag_id}`, plus CORS `OPTIONS`, plus JSON access logs
@@ -44,7 +43,7 @@ The script handles everything:
 Safe and incremental:
 - Lambda zip rebuilt only if source files are newer.
 - Artifact bucket creation is idempotent.
-- `sam deploy` uses change sets — no-op when nothing changed.
+- `aws cloudformation deploy` uses change sets — no-op when nothing changed.
 
 ## Outputs
 

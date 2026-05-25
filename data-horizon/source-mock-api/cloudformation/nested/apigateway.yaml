@@ -153,7 +153,9 @@ Resources:
             method.response.header.Access-Control-Allow-Origin: true
 
   # ---------- Deployment & Stage ----------
-  Deployment:
+  # Logical ID includes a content hash so any auth/method change forces a new
+  # deployment (otherwise the stage keeps serving the old config).
+  Deployment3a9f1c:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - GetTagsMethod
@@ -176,7 +178,7 @@ Resources:
     DependsOn: ApiGwAccount
     Properties:
       RestApiId: !Ref RestApi
-      DeploymentId: !Ref Deployment
+      DeploymentId: !Ref Deployment3a9f1c
       StageName: !Ref Environment
       AccessLogSetting:
         DestinationArn: !GetAtt ApiLogGroup.Arn
