@@ -1,0 +1,5 @@
+{
+  "Environment": "dev",
+  "LambdaMemorySize": "256",
+  "LambdaTimeout": "30"
+}

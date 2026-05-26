@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — Redshift cluster + subnet group + S3 COPY IAM role (mirrors terraform/modules/redshift).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  Environment:
+    Type: String
+  NodeType:
+    Type: String
+    Default: dc2.large
+  NumberOfNodes:
+    Type: Number
+    Default: 1
+  DatabaseName:
+    Type: String
+    Default: datahorizon
+  MasterUsername:
+    Type: String
+    Default: admin
+  MasterUserPassword:
+    Type: String
+    NoEcho: true
+    Description: Redshift master password (8-64 chars, must include upper, lower, and digit).
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  ValidatedBucketArn:
+    Type: String
+
+Conditions:
+  IsMultiNode: !Not [!Equals [!Ref NumberOfNodes, 1]]
+
+Resources:
+
+  RedshiftRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-redshift-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal: { Service: redshift.amazonaws.com }
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-redshift-s3-copy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref ValidatedBucketArn
+                  - !Sub ${ValidatedBucketArn}/*
+
+  RedshiftSubnetGroup:
+    Type: AWS::Redshift::ClusterSubnetGroup
+    Properties:
+      Description: !Sub ${NamePrefix} private subnets
+      SubnetIds: !Ref SubnetIds
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-subnet-group" }
+
+  RedshiftCluster:
+    Type: AWS::Redshift::Cluster
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ClusterIdentifier: !Sub ${NamePrefix}-cluster
+      NodeType: !Ref NodeType
+      NumberOfNodes: !Ref NumberOfNodes
+      ClusterType: !If [IsMultiNode, multi-node, single-node]
+      DBName: !Ref DatabaseName
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      ClusterSubnetGroupName: !Ref RedshiftSubnetGroup
+      VpcSecurityGroupIds: [!Ref SecurityGroupId]
+      EnhancedVpcRouting: true
+      IamRoles: [!GetAtt RedshiftRole.Arn]
+      PubliclyAccessible: false
+      Encrypted: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-cluster" }
+
+Outputs:
+  ClusterIdentifier:
+    Value: !Ref RedshiftCluster
+  ClusterEndpoint:
+    Value: !GetAtt RedshiftCluster.Endpoint.Address
+  DatabaseName:
+    Value: !Ref DatabaseName
+  MasterUsername:
+    Value: !Ref MasterUsername
+  RedshiftRoleArn:
+    Value: !GetAtt RedshiftRole.Arn

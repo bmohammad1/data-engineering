@@ -1,0 +1,5 @@
+{
+  "Environment": "staging",
+  "LambdaMemorySize": "256",
+  "LambdaTimeout": "30"
+}

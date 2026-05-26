@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — Config Loader + Map State Processor Lambda functions (mirrors terraform/modules/lambda).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  Environment:
+    Type: String
+  ConfigLoaderRoleArn:
+    Type: String
+  MapProcessorRoleArn:
+    Type: String
+  ConfigLoaderMemory:
+    Type: Number
+    Default: 256
+  ConfigLoaderTimeout:
+    Type: Number
+    Default: 60
+  MapProcessorMemory:
+    Type: Number
+    Default: 256
+  MapProcessorTimeout:
+    Type: Number
+    Default: 60
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+  ArtifactBucket:
+    Type: String
+    Description: S3 bucket holding Lambda zip artifacts (the deploy script uploads them here).
+  ConfigLoaderS3Key:
+    Type: String
+    Description: S3 key for the config loader Lambda zip within ArtifactBucket.
+  MapProcessorS3Key:
+    Type: String
+    Description: S3 key for the map state processor Lambda zip within ArtifactBucket.
+
+Resources:
+
+  ConfigLoaderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${NamePrefix}-config-loader
+      Role: !Ref ConfigLoaderRoleArn
+      Handler: handler.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: !Ref ConfigLoaderMemory
+      Timeout: !Ref ConfigLoaderTimeout
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Ref ConfigLoaderS3Key
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-config-loader" }
+
+  ConfigLoaderLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${NamePrefix}-config-loader
+      RetentionInDays: !Ref LogRetentionDays
+
+  MapStateProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${NamePrefix}-map-state-processor
+      Role: !Ref MapProcessorRoleArn
+      Handler: handler.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: !Ref MapProcessorMemory
+      Timeout: !Ref MapProcessorTimeout
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Ref MapProcessorS3Key
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-map-state-processor" }
+
+  MapStateProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${NamePrefix}-map-state-processor
+      RetentionInDays: !Ref LogRetentionDays
+
+Outputs:
+  ConfigLoaderFunctionArn:
+    Value: !GetAtt ConfigLoaderFunction.Arn
+  ConfigLoaderFunctionName:
+    Value: !Ref ConfigLoaderFunction
+  MapStateProcessorFunctionArn:
+    Value: !GetAtt MapStateProcessorFunction.Arn
+  MapStateProcessorFunctionName:
+    Value: !Ref MapStateProcessorFunction

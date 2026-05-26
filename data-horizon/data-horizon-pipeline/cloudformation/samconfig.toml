@@ -1,0 +1,57 @@
+version = 0.1
+
+# SAM CLI configuration for Data Horizon. One section per (env, stack) pair.
+# The deploy script (scripts/deploy.ps1) handles parameter overrides dynamically
+# because foundation outputs are passed to the app stack, so we keep these
+# sections minimal — mainly stack name, region, capabilities.
+
+# ---------------- dev ----------------
+[dev-foundation.deploy.parameters]
+stack_name = "data-horizon-foundation-dev"
+region = "us-east-1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = false
+fail_on_empty_changeset = false
+resolve_s3 = true
+
+[dev-app.deploy.parameters]
+stack_name = "data-horizon-app-dev"
+region = "us-east-1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = false
+fail_on_empty_changeset = false
+resolve_s3 = true
+
+# ---------------- staging ----------------
+[staging-foundation.deploy.parameters]
+stack_name = "data-horizon-foundation-staging"
+region = "us-east-1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = false
+fail_on_empty_changeset = false
+resolve_s3 = true
+
+[staging-app.deploy.parameters]
+stack_name = "data-horizon-app-staging"
+region = "us-east-1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = false
+fail_on_empty_changeset = false
+resolve_s3 = true
+
+# ---------------- prod ----------------
+[prod-foundation.deploy.parameters]
+stack_name = "data-horizon-foundation-prod"
+region = "us-east-1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
+fail_on_empty_changeset = false
+resolve_s3 = true
+
+[prod-app.deploy.parameters]
+stack_name = "data-horizon-app-prod"
+region = "us-east-1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
+fail_on_empty_changeset = false
+resolve_s3 = true

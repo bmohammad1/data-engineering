@@ -1,0 +1,5 @@
+{
+  "Environment": "prod",
+  "LambdaMemorySize": "256",
+  "LambdaTimeout": "30"
+}

@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Data Horizon — non-secret SSM parameters (mirrors terraform/modules/ssm_parameters).
+  SecureString parameters (source-api-token, redshift-master-password) cannot be
+  created by CloudFormation. They are seeded out-of-band by scripts/bootstrap.ps1.
+
+Parameters:
+  Environment:
+    Type: String
+  PipelineStateTable:
+    Type: String
+  SourceApiBaseUrl:
+    Type: String
+  ConfigBucketName:
+    Type: String
+  OrchestrationBucketName:
+    Type: String
+  RawBucketName:
+    Type: String
+  CleanedBucketName:
+    Type: String
+  ValidatedBucketName:
+    Type: String
+  QuarantineBucketName:
+    Type: String
+  GlueDatabase:
+    Type: String
+  MapStateConcurrency:
+    Type: Number
+    Default: 10
+
+Resources:
+
+  PipelineStateTableParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/pipeline-state-table
+      Type: String
+      Value: !Ref PipelineStateTable
+
+  SourceApiBaseUrlParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/source-api-base-url
+      Type: String
+      Value: !Ref SourceApiBaseUrl
+
+  ConfigBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/config-bucket-name
+      Type: String
+      Value: !Ref ConfigBucketName
+
+  OrchestrationBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/orchestration-bucket-name
+      Type: String
+      Value: !Ref OrchestrationBucketName
+
+  RawBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/raw-bucket-name
+      Type: String
+      Value: !Ref RawBucketName
+
+  CleanedBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/cleaned-bucket-name
+      Type: String
+      Value: !Ref CleanedBucketName
+
+  ValidatedBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/validated-bucket-name
+      Type: String
+      Value: !Ref ValidatedBucketName
+
+  QuarantineBucketNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/quarantine-bucket-name
+      Type: String
+      Value: !Ref QuarantineBucketName
+
+  GlueDatabaseParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/glue-database
+      Type: String
+      Value: !Ref GlueDatabase
+
+  MapStateConcurrencyParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /data-horizon/${Environment}/map-state-concurrency
+      Type: String
+      Value: !Sub "${MapStateConcurrency}"
+
+Outputs:
+  ParameterPathPrefix:
+    Value: !Sub /data-horizon/${Environment}

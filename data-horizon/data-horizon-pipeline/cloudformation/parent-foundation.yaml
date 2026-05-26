@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Data Horizon — FOUNDATION stack.
+  Creates resources that have no dependency on Glue scripts or Lambda zips:
+  IAM roles, S3 buckets, DynamoDB, SQS/SNS, SSM parameters, VPC.
+  Deploy this first; then the deploy script uploads Glue scripts and Lambda
+  zips to the scripts/artifact buckets and deploys parent-app.yaml.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  NamePrefix:
+    Type: String
+    Default: data-horizon-dev
+  AccountSuffix:
+    Type: String
+    AllowedPattern: ^[0-9]{8}$
+    Description: Last 8 digits of the AWS account ID (computed by deploy script).
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+  PrivateSubnet1Cidr:
+    Type: String
+    Default: 10.0.1.0/24
+  PrivateSubnet2Cidr:
+    Type: String
+    Default: 10.0.2.0/24
+  AlertEmail:
+    Type: String
+  SourceApiBaseUrl:
+    Type: String
+  MapStateConcurrency:
+    Type: Number
+    Default: 10
+
+Resources:
+
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/s3.yaml
+      Parameters:
+        NamePrefix: !Ref NamePrefix
+        AccountSuffix: !Ref AccountSuffix
+
+  DynamoDbStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/dynamodb.yaml
+
+  SqsSnsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/sqs-sns.yaml
+      Parameters:
+        NamePrefix: !Ref NamePrefix
+        AlertEmail: !Ref AlertEmail
+
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/vpc.yaml
+      Parameters:
+        NamePrefix: !Ref NamePrefix
+        VpcCidr: !Ref VpcCidr
+        PrivateSubnet1Cidr: !Ref PrivateSubnet1Cidr
+        PrivateSubnet2Cidr: !Ref PrivateSubnet2Cidr
+
+  GlueCatalogStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/glue-catalog.yaml
+      Parameters:
+        NamePrefix: !Ref NamePrefix
+        RawBucketName:       !GetAtt S3Stack.Outputs.RawBucketName
+        CleanedBucketName:   !GetAtt S3Stack.Outputs.CleanedBucketName
+        ValidatedBucketName: !GetAtt S3Stack.Outputs.ValidatedBucketName
+        BadBucketName:       !GetAtt S3Stack.Outputs.BadBucketName
+
+  SsmParametersStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/ssm-parameters.yaml
+      Parameters:
+        Environment: !Ref Environment
+        PipelineStateTable:      !GetAtt DynamoDbStack.Outputs.TableName
+        SourceApiBaseUrl:        !Ref SourceApiBaseUrl
+        ConfigBucketName:        !GetAtt S3Stack.Outputs.ConfigBucketName
+        OrchestrationBucketName: !GetAtt S3Stack.Outputs.OrchestrationBucketName
+        RawBucketName:           !GetAtt S3Stack.Outputs.RawBucketName
+        CleanedBucketName:       !GetAtt S3Stack.Outputs.CleanedBucketName
+        ValidatedBucketName:     !GetAtt S3Stack.Outputs.ValidatedBucketName
+        QuarantineBucketName:    !GetAtt S3Stack.Outputs.BadBucketName
+        GlueDatabase:            !GetAtt GlueCatalogStack.Outputs.DatabaseName
+        MapStateConcurrency:     !Ref MapStateConcurrency
+
+  IamStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/iam.yaml
+      Parameters:
+        NamePrefix: !Ref NamePrefix
+        Environment: !Ref Environment
+        SsmParameterPathPrefix: !GetAtt SsmParametersStack.Outputs.ParameterPathPrefix
+        RawBucketArn:           !GetAtt S3Stack.Outputs.RawBucketArn
+        CleanedBucketArn:       !GetAtt S3Stack.Outputs.CleanedBucketArn
+        ValidatedBucketArn:     !GetAtt S3Stack.Outputs.ValidatedBucketArn
+        BadBucketArn:           !GetAtt S3Stack.Outputs.BadBucketArn
+        ScriptsBucketArn:       !GetAtt S3Stack.Outputs.ScriptsBucketArn
+        OrchestrationBucketArn: !GetAtt S3Stack.Outputs.OrchestrationBucketArn
+        ConfigBucketArn:        !GetAtt S3Stack.Outputs.ConfigBucketArn
+        DynamoDbTableArn:                !GetAtt DynamoDbStack.Outputs.TableArn
+        ExtractionFailuresQueueArn:      !GetAtt SqsSnsStack.Outputs.ExtractionFailuresQueueArn
+        EventBridgeFailuresQueueArn:     !GetAtt SqsSnsStack.Outputs.EventBridgeFailuresQueueArn
+        SnsTopicArn:                     !GetAtt SqsSnsStack.Outputs.SnsTopicArn
+
+Outputs:
+  NamePrefix:                       { Value: !Ref NamePrefix }
+  Environment:                      { Value: !Ref Environment }
+  AccountSuffix:                    { Value: !Ref AccountSuffix }
+
+  ScriptsBucketName:                { Value: !GetAtt S3Stack.Outputs.ScriptsBucketName }
+  RawBucketName:                    { Value: !GetAtt S3Stack.Outputs.RawBucketName }
+  CleanedBucketName:                { Value: !GetAtt S3Stack.Outputs.CleanedBucketName }
+  ValidatedBucketName:              { Value: !GetAtt S3Stack.Outputs.ValidatedBucketName }
+  BadBucketName:                    { Value: !GetAtt S3Stack.Outputs.BadBucketName }
+  ConfigBucketName:                 { Value: !GetAtt S3Stack.Outputs.ConfigBucketName }
+  OrchestrationBucketName:          { Value: !GetAtt S3Stack.Outputs.OrchestrationBucketName }
+  ValidatedBucketArn:               { Value: !GetAtt S3Stack.Outputs.ValidatedBucketArn }
+
+  DynamoDbTableName:                { Value: !GetAtt DynamoDbStack.Outputs.TableName }
+  DynamoDbTableArn:                 { Value: !GetAtt DynamoDbStack.Outputs.TableArn }
+
+  ExtractionFailuresQueueArn:       { Value: !GetAtt SqsSnsStack.Outputs.ExtractionFailuresQueueArn }
+  ExtractionFailuresQueueUrl:       { Value: !GetAtt SqsSnsStack.Outputs.ExtractionFailuresQueueUrl }
+  ExtractionFailuresQueueName:      { Value: !GetAtt SqsSnsStack.Outputs.ExtractionFailuresQueueName }
+  EventBridgeFailuresQueueArn:      { Value: !GetAtt SqsSnsStack.Outputs.EventBridgeFailuresQueueArn }
+  SnsTopicArn:                      { Value: !GetAtt SqsSnsStack.Outputs.SnsTopicArn }
+
+  VpcId:                            { Value: !GetAtt VpcStack.Outputs.VpcId }
+  PrivateSubnetIds:                 { Value: !GetAtt VpcStack.Outputs.PrivateSubnetIds }
+  RedshiftSecurityGroupId:          { Value: !GetAtt VpcStack.Outputs.RedshiftSecurityGroupId }
+
+  GlueDatabaseName:                 { Value: !GetAtt GlueCatalogStack.Outputs.DatabaseName }
+
+  SsmParameterPathPrefix:           { Value: !GetAtt SsmParametersStack.Outputs.ParameterPathPrefix }
+
+  LambdaConfigLoaderRoleArn:        { Value: !GetAtt IamStack.Outputs.LambdaConfigLoaderRoleArn }
+  LambdaMapProcessorRoleArn:        { Value: !GetAtt IamStack.Outputs.LambdaMapProcessorRoleArn }
+  GlueRoleArn:                      { Value: !GetAtt IamStack.Outputs.GlueRoleArn }
+  StepFunctionsRoleArn:             { Value: !GetAtt IamStack.Outputs.StepFunctionsRoleArn }
+  EventBridgeRoleArn:               { Value: !GetAtt IamStack.Outputs.EventBridgeRoleArn }

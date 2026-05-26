@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data Horizon — CloudWatch metric alarms (mirrors terraform/modules/cloudwatch/alarms.tf).
+
+Parameters:
+  NamePrefix:
+    Type: String
+  SnsTopicArn:
+    Type: String
+  ParentStateMachineArn:
+    Type: String
+  ConfigLoaderFunctionName:
+    Type: String
+  MapStateProcessorFunctionName:
+    Type: String
+  ConfigLoaderTimeoutMs:
+    Type: Number
+    Description: Config loader timeout in milliseconds; alarm fires above 80% of this.
+  MapProcessorTimeoutMs:
+    Type: Number
+  TransformGlueJobName:
+    Type: String
+  ValidationGlueJobName:
+    Type: String
+  GlueHeapThresholdBytes:
+    Type: Number
+    Default: 8589934592
+    Description: 80% of G.1X 10GB driver heap by default.
+  ExtractionFailuresQueueName:
+    Type: String
+  DynamoDbTableName:
+    Type: String
+
+Resources:
+
+  ParentPipelineTimedOutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-parent-pipeline-timed-out
+      AlarmDescription: Parent pipeline execution timed out — usually a stuck Glue job or Lambda
+      Namespace: AWS/States
+      MetricName: ExecutionsTimedOut
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: StateMachineArn, Value: !Ref ParentStateMachineArn }
+
+  ParentPipelineThrottledAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-parent-pipeline-throttled
+      AlarmDescription: Parent pipeline Step Function executions are being throttled
+      Namespace: AWS/States
+      MetricName: ExecutionThrottled
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: StateMachineArn, Value: !Ref ParentStateMachineArn }
+
+  ConfigLoaderThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-config-loader-throttles
+      AlarmDescription: Config Loader Lambda is being throttled — requests rejected before SF retry logic
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref ConfigLoaderFunctionName }
+
+  MapProcessorThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-map-processor-throttles
+      AlarmDescription: Map state processor Lambda is being throttled — high concurrency fan-out hitting account limits
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref MapStateProcessorFunctionName }
+
+  ConfigLoaderDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-config-loader-duration
+      AlarmDescription: Config Loader Lambda duration exceeds 80% of configured timeout — at risk of hard kill
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref ConfigLoaderTimeoutMs
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref ConfigLoaderFunctionName }
+
+  MapProcessorDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-map-processor-duration
+      AlarmDescription: Map state processor Lambda duration exceeds 80% of configured timeout
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref MapProcessorTimeoutMs
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref MapStateProcessorFunctionName }
+
+  GlueTransformHeapAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-glue-transform-heap
+      AlarmDescription: Glue transform job JVM heap usage exceeds 80% — OOM risk from large tag batches or wide shuffles
+      Namespace: Glue
+      MetricName: glue.driver.jvm.heap.used
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref GlueHeapThresholdBytes
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: JobName, Value: !Ref TransformGlueJobName }
+        - { Name: JobRunId, Value: ALL }
+
+  GlueValidationHeapAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-glue-validation-heap
+      AlarmDescription: Glue validation job JVM heap usage exceeds 80% — OOM risk
+      Namespace: Glue
+      MetricName: glue.driver.jvm.heap.used
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref GlueHeapThresholdBytes
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: JobName, Value: !Ref ValidationGlueJobName }
+        - { Name: JobRunId, Value: ALL }
+
+  ValidationRejectionRateHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-validation-rejection-rate-high
+      AlarmDescription: Validation rejection rate exceeds 15% — possible upstream schema change or API mutation rate shift
+      Namespace: DataHorizon/Validation
+      MetricName: ValidationRejectionRate
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 15
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+
+  TagsFailedPerRunHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-tags-failed-per-run-high
+      AlarmDescription: More than 50 tags had all records quarantined in a single run (>1% of 5000 tags)
+      Namespace: DataHorizon/Validation
+      MetricName: TagsFailedPerRun
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+
+  ExtractionFailuresPresentAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-extraction-failures-present
+      AlarmDescription: Messages in extraction-failures DLQ — at least one tag batch failed after all retries, data gap in this run
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: QueueName, Value: !Ref ExtractionFailuresQueueName }
+
+  ExtractionFailuresAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-extraction-failures-age
+      AlarmDescription: Extraction DLQ messages older than 6 hours — failures accumulating across runs without investigation
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 21600
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: QueueName, Value: !Ref ExtractionFailuresQueueName }
+
+  DynamoDbSystemErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-dynamodb-system-errors
+      AlarmDescription: DynamoDB 5xx errors — transient service-side failures on pipeline state table
+      Namespace: AWS/DynamoDB
+      MetricName: SystemErrors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: TableName, Value: !Ref DynamoDbTableName }
+
+  DynamoDbUserErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-dynamodb-user-errors
+      AlarmDescription: DynamoDB 4xx errors — bad requests against pipeline state table, likely a code bug (wrong table name, schema mismatch)
+      Namespace: AWS/DynamoDB
+      MetricName: UserErrors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: TableName, Value: !Ref DynamoDbTableName }
+
+  DynamoDbThrottledRequestsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${NamePrefix}-dynamodb-throttled-requests
+      AlarmDescription: DynamoDB throttled requests — bulk tag status writes from Glue hitting on-demand capacity limits
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref SnsTopicArn]
+      Dimensions:
+        - { Name: TableName, Value: !Ref DynamoDbTableName }
